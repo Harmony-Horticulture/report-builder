@@ -126,6 +126,8 @@ create table if not exists public.report_settings (
   updated_at          timestamptz not null default now()
 );
 insert into public.report_settings (id) values (1) on conflict do nothing;
+-- Mapbox public token for the punch list map (added later, so added separately)
+alter table public.report_settings add column if not exists map_token text not null default '';
 
 -- ---------------------------------------------------------------------
 -- Security rules
