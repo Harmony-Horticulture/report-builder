@@ -398,8 +398,10 @@
             <div class="photo-box">
               ${it.photo ? `<img src="${esc(urls[it.photo.id] || "")}" alt="">` : `<span class="small muted">${s.kind === "photos" ? "Add a photo" : "Photo (optional)"}</span>`}
               <div class="btn-row">
-                <label class="btn"><input type="file" accept="image/*" capture="environment" data-photo data-sec="${esc(s.key)}" data-id="${esc(it.id)}">${it.photo ? "Retake" : "Camera"}</label>
-                <label class="btn secondary"><input type="file" accept="image/*" data-photo data-sec="${esc(s.key)}" data-id="${esc(it.id)}">Library</label>
+                ${useWebcam()
+                  ? `<button type="button" data-webcam data-sec="${esc(s.key)}" data-id="${esc(it.id)}">${it.photo ? "Retake" : "Camera"}</button>`
+                  : `<label class="btn"><input type="file" accept="image/*" capture="environment" data-photo data-sec="${esc(s.key)}" data-id="${esc(it.id)}">${it.photo ? "Retake" : "Camera"}</label>`}
+                <label class="btn secondary"><input type="file" accept="image/*" data-photo data-sec="${esc(s.key)}" data-id="${esc(it.id)}">${useWebcam() ? "Upload photo" : "Library"}</label>
               </div>
               ${it.photo ? `<button type="button" class="ghost small" data-nophoto data-sec="${esc(s.key)}" data-id="${esc(it.id)}">No photo</button>` : ""}
             </div>
@@ -451,10 +453,32 @@
     window.scrollTo(0, y);
   }
 
+  // Enter on a bullet line starts the next bullet, like Word. Enter on an
+  // empty bullet ends the list. Shift+Enter makes a plain new line.
+  function bulletEnter(e) {
+    if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+    const ta = e.target, v = ta.value, s = ta.selectionStart, end = ta.selectionEnd;
+    const ls = v.lastIndexOf("\n", s - 1) + 1;
+    const m = v.slice(ls, s).match(/^(\s*)-\s/);
+    if (!m) return;
+    e.preventDefault();
+    if (!v.slice(ls, s).slice(m[0].length).trim() && !v.slice(end).split("\n")[0].trim()) {
+      // Empty bullet: take the dash away and stop the list
+      ta.value = v.slice(0, ls) + v.slice(end);
+      ta.setSelectionRange(ls, ls);
+    } else {
+      const ins = "\n" + m[1] + "- ";
+      ta.value = v.slice(0, s) + ins + v.slice(end);
+      ta.setSelectionRange(s + ins.length, s + ins.length);
+    }
+    ta.dispatchEvent(new Event("input"));
+  }
+
   function bindEditor() {
     const r = state.report;
     $$("[data-path]").forEach((el) => {
       el.oninput = el.onchange = () => { setPath(r, el.dataset.path, el.value); scheduleSave(); };
+      if (el.tagName === "TEXTAREA") el.onkeydown = bulletEnter;
     });
     const tsel = $("#typeSel");
     if (tsel) tsel.onchange = async () => {
@@ -500,7 +524,10 @@
         ta.setSelectionRange(s + 2, s + 2 + sel.length);
       } else {
         const ls = v.lastIndexOf("\n", s - 1) + 1;
-        ta.value = /^\s*-\s/.test(v.slice(ls)) ? v.slice(0, ls) + v.slice(ls).replace(/^\s*-\s/, "") : v.slice(0, ls) + "- " + v.slice(ls);
+        const had = v.slice(ls).match(/^\s*-\s/);
+        ta.value = had ? v.slice(0, ls) + v.slice(ls + had[0].length) : v.slice(0, ls) + "- " + v.slice(ls);
+        const pos = had ? Math.max(ls, s - had[0].length) : s + 2;
+        ta.setSelectionRange(pos, pos);
       }
       ta.focus(); ta.dispatchEvent(new Event("input"));
     }));
@@ -559,6 +586,17 @@
       try {
         toast("Adding photo…");
         const it = sectionItems(inp.dataset.sec).find((x) => x.id === inp.dataset.id);
+        it.photo = await addPhoto(file);
+        scheduleSave(); await redraw();
+        toast("Photo added.");
+      } catch (e) { fail(e); }
+    }));
+    $$("[data-webcam]").forEach((b) => (b.onclick = async () => {
+      const file = await webcamShot();
+      if (!file) return;
+      try {
+        toast("Adding photo…");
+        const it = sectionItems(b.dataset.sec).find((x) => x.id === b.dataset.id);
         it.photo = await addPhoto(file);
         scheduleSave(); await redraw();
         toast("Photo added.");
@@ -646,6 +684,40 @@
     const blob = await new Promise((resolve) => c.toBlob(resolve, "image/jpeg", 0.82));
     const ref = await S.uploadPhoto(state.report.id, blob);
     return { ...ref, w, h };
+  }
+
+  // --- Camera on a computer -----------------------------------------
+  // Phones and tablets open their own camera from the file button
+  // (capture="environment"). Computers ignore that and show a file
+  // picker, so there the Camera button opens the webcam in a window.
+  const useWebcam = () => !(window.matchMedia && matchMedia("(pointer: coarse)").matches) && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  async function webcamShot() {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    } catch (e) {
+      toast(/NotAllowed|Permission/i.test(e.name + e.message) ? "The browser blocked the camera. Allow camera access for this site, or use Upload photo." : "No camera found on this computer. Use Upload photo instead.", true);
+      return null;
+    }
+    return new Promise((resolve) => {
+      const { m, close } = modal(`<h2>Take a photo</h2>
+        <video autoplay playsinline muted style="width:100%;border-radius:8px;background:#000"></video>
+        <div class="btn-row" style="justify-content:flex-end;margin-top:12px"><button class="secondary" data-no>Cancel</button><button data-snap>Take photo</button></div>`);
+      const video = $("video", m);
+      video.srcObject = stream;
+      let done = false, watch = null;
+      const finish = (file) => { if (done) return; done = true; stream.getTracks().forEach((t) => t.stop()); clearInterval(watch); close(); resolve(file); };
+      // Closed by clicking outside: turn the camera off
+      watch = setInterval(() => { if (!m.isConnected) finish(null); }, 400);
+      $("[data-no]", m).onclick = () => finish(null);
+      $("[data-snap]", m).onclick = () => {
+        const c = document.createElement("canvas");
+        c.width = video.videoWidth; c.height = video.videoHeight;
+        if (!c.width) return;
+        c.getContext("2d").drawImage(video, 0, 0);
+        c.toBlob((blob) => finish(new File([blob], "camera.jpg", { type: "image/jpeg" })), "image/jpeg", 0.9);
+      };
+    });
   }
 
   // --- Dictation (RC-17, RC-18) ----------------------------------------
