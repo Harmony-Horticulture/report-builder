@@ -83,131 +83,209 @@
   }
 
   // =====================================================================
-  // Word
+  // Word: modeled on brand/samples/sample-fall-care-checklist.docx.
+  // Everything is real Word text, tables and inline pictures, with named
+  // styles (Title, Subtitle, Heading 1...), so it all stays editable.
   // =====================================================================
-  async function buildDocx(report, photos) {
+  async function fontBytes(file) {
+    cache.fontBytes = cache.fontBytes || {};
+    if (!cache.fontBytes[file]) cache.fontBytes[file] = new Uint8Array(await (await fetch("fonts/" + file)).arrayBuffer());
+    return cache.fontBytes[file];
+  }
+
+  async function buildDocx(report, photos, opts = {}) {
     const d = window.docx;
-    const FONT = "Montserrat";
+    const FONT = "Montserrat", LIGHT = "Montserrat Light";
+    const PAGE_W = 12240, PAGE_H = 15840, SIDE = 1224, CONTENT_W = PAGE_W - 2 * SIDE; // twips (1/1440 in)
+    const PX = 15; // twips per picture pixel
     const none = { style: d.BorderStyle.NONE, size: 0, color: "FFFFFF" };
     const noBorders = { top: none, bottom: none, left: none, right: none, insideHorizontal: none, insideVertical: none };
-    const white = { style: d.BorderStyle.SINGLE, size: 6, color: "FFFFFF" };
-    const whiteBorders = { top: white, bottom: white, left: white, right: white, insideHorizontal: white, insideVertical: white };
-    const PAGE_W = 12240, MARGIN = 1080, CONTENT_W = PAGE_W - 2 * MARGIN; // twips
+    const gap = { style: d.BorderStyle.SINGLE, size: 12, color: "FFFFFF" };
+    const gapBorders = { top: gap, bottom: gap, left: gap, right: gap, insideHorizontal: gap, insideVertical: gap };
+    const rule = (color = LEAF, size = 8) => ({ bottom: { style: d.BorderStyle.SINGLE, size, color, space: 4 } });
+    const shade = (fill) => ({ fill, type: d.ShadingType.CLEAR, color: "auto" });
+    const cellPad = { top: 100, bottom: 100, left: 160, right: 160 };
+    const property = String(report.property || report.client_name || "");
+    const cons = report.consultant || {};
+    const isPhotoReport = (report.sections || []).some((s) => s.kind === "photos");
 
-    const runs = (rr, opts = {}) => rr.map((r) => new d.TextRun({ text: r.text, bold: r.bold || opts.bold, color: opts.color, size: opts.size, font: FONT }));
-    function rich(text, opts = {}) {
+    const t = (text, o = {}) => new d.TextRun({ text, ...o });
+    const runs = (rr, o = {}) => rr.map((r) => t(r.text, { bold: r.bold || o.bold, color: o.color }));
+    function rich(text, o = {}) {
       return R.parseRich(text).map((b) =>
         b.type === "li"
-          ? new d.Paragraph({ numbering: { reference: "hh-bullets", level: 0 }, spacing: { after: 60 }, children: runs(b.runs, opts) })
-          : new d.Paragraph({ spacing: { after: 120 }, children: runs(b.runs, opts) })
+          ? new d.Paragraph({ style: "HHBody", numbering: { reference: "hh-bullets", level: 0 }, spacing: { after: 60 }, children: runs(b.runs, o) })
+          : new d.Paragraph({ style: "HHBody", children: runs(b.runs, o) })
       );
     }
-    const label = (t) => new d.Paragraph({ spacing: { before: 60, after: 40 }, children: [new d.TextRun({ text: t, bold: true, color: BROWN, font: FONT })] });
-    const img = (p, maxWpx, maxHpx) => {
-      const s = fit(p.w, p.h, maxWpx, maxHpx);
-      const type = /^data:image\/png/.test(p.dataUrl) ? "png" : "jpg";
-      return new d.Paragraph({ children: [new d.ImageRun({ type, data: dataUrlToBytes(p.dataUrl), transformation: { width: Math.round(s.w), height: Math.round(s.h) } })] });
-    };
+    const label = (text, o = {}) => new d.Paragraph({ style: "HHLabel", keepNext: true, ...o, children: [t(text)] });
+    const kicker = (text) => new d.Paragraph({ style: "HHKicker", keepNext: true, children: [t(text)] });
+    function picture(p, maxW, maxH, alt) {
+      const s = fit(p.w, p.h, maxW, maxH);
+      return new d.Paragraph({
+        spacing: { after: 0 },
+        children: [new d.ImageRun({
+          type: /^data:image\/png/.test(p.dataUrl) ? "png" : "jpg",
+          data: dataUrlToBytes(p.dataUrl),
+          transformation: { width: Math.round(s.w), height: Math.round(s.h) },
+          altText: { title: alt, description: alt, name: alt },
+        })],
+      });
+    }
+    // Brown label cell + light gray body cell, like the "Peace of Mind" box in the sample
+    function labelBox(rows, labelW = 2300) {
+      return new d.Table({
+        width: { size: CONTENT_W, type: d.WidthType.DXA }, columnWidths: [labelW, CONTENT_W - labelW],
+        layout: d.TableLayoutType.FIXED, borders: gapBorders,
+        rows: rows.map(([k, body]) => new d.TableRow({ cantSplit: true, children: [
+          new d.TableCell({ width: { size: labelW, type: d.WidthType.DXA }, shading: shade(BROWN), margins: cellPad, verticalAlign: d.VerticalAlign.CENTER,
+            children: [new d.Paragraph({ style: "HHBody", spacing: { after: 0 }, children: [t(k, { bold: true, color: "FFFFFF" })] })] }),
+          new d.TableCell({ width: { size: CONTENT_W - labelW, type: d.WidthType.DXA }, shading: shade(PANEL), margins: cellPad, verticalAlign: d.VerticalAlign.CENTER,
+            children: Array.isArray(body) ? body : [new d.Paragraph({ style: "HHBody", spacing: { after: 0 }, children: [t(String(body))] })] }),
+        ] })),
+      });
+    }
+    const spacer = (after = 120) => new d.Paragraph({ spacing: { before: 0, after }, children: [] });
 
     const children = [];
-    // Title block
-    children.push(new d.Paragraph({ spacing: { before: 120, after: 60 }, children: [new d.TextRun({ text: report.type_name.toUpperCase(), font: "Montserrat Light", size: 44, color: BROWN, characterSpacing: 20 })] }));
-    children.push(new d.Paragraph({ spacing: { after: 240 }, children: [new d.TextRun({ text: String(report.property || report.client_name || "").toUpperCase(), bold: true, size: 20, color: PINK, font: FONT, characterSpacing: 30 })] }));
+    const logoUrl = await logo();
 
-    // Header info table: Earth Brown labels, light gray values
-    const hr = headerRows(report);
-    if (hr.length) {
-      const LW = 2200;
-      children.push(new d.Table({
-        width: { size: CONTENT_W, type: d.WidthType.DXA }, columnWidths: [LW, CONTENT_W - LW], borders: whiteBorders,
-        rows: hr.map(([k, v]) => new d.TableRow({ children: [
-          new d.TableCell({ width: { size: LW, type: d.WidthType.DXA }, shading: { fill: BROWN, type: d.ShadingType.CLEAR, color: "auto" }, margins: { top: 80, bottom: 80, left: 140, right: 140 }, children: [new d.Paragraph({ children: [new d.TextRun({ text: k + ":", bold: true, color: "FFFFFF", font: FONT })] })] }),
-          new d.TableCell({ width: { size: CONTENT_W - LW, type: d.WidthType.DXA }, shading: { fill: PANEL, type: d.ShadingType.CLEAR, color: "auto" }, margins: { top: 80, bottom: 80, left: 140, right: 140 }, children: [new d.Paragraph({ children: [new d.TextRun({ text: v, font: FONT })] })] }),
-        ] })),
-      }));
-    }
+    // Top band: logo left, report label right (as in the sample)
+    const LOGO_COL = 3400;
+    children.push(new d.Table({
+      width: { size: CONTENT_W, type: d.WidthType.DXA }, columnWidths: [LOGO_COL, CONTENT_W - LOGO_COL],
+      layout: d.TableLayoutType.FIXED, borders: noBorders,
+      rows: [new d.TableRow({ children: [
+        new d.TableCell({ width: { size: LOGO_COL, type: d.WidthType.DXA }, margins: { top: 0, bottom: 0, left: 0, right: 0 },
+          children: [new d.Paragraph({ children: [new d.ImageRun({ type: "png", data: dataUrlToBytes(logoUrl), transformation: { width: 140, height: Math.round(140 * 620 / 844) }, altText: { title: "Harmony Horticulture", description: "Harmony Horticulture logo", name: "Logo" } })] })] }),
+        new d.TableCell({ width: { size: CONTENT_W - LOGO_COL, type: d.WidthType.DXA }, margins: { top: 0, bottom: 0, left: 0, right: 0 },
+          children: [new d.Paragraph({ alignment: d.AlignmentType.RIGHT, children: [t(`Client Report  |  ${R.niceDate(report.report_date)}`, { allCaps: true, size: 18, color: GRAY })] })] }),
+      ] })],
+    }));
+
+    // Title, subtitle and a short welcome in the Harmony voice (editable)
+    children.push(new d.Paragraph({ heading: d.HeadingLevel.TITLE, children: [t(report.type_name)] }));
+    children.push(new d.Paragraph({ style: "HHSubtitle", children: [t(property)] }));
+    const greet = String(report.contact_name || "").trim();
+    const when = R.niceDate(report.report_date);
+    children.push(new d.Paragraph({ style: "HHBody", spacing: { after: 200 }, children: [t(
+      isPhotoReport
+        ? `${greet ? `Prepared for ${greet}. ` : ""}Thank you for trusting us with the care of ${property}. Below are the photos and notes from our visit on ${when}, so you can see exactly what we saw and what comes next.`
+        : `${greet ? `Prepared for ${greet}. ` : ""}Thank you for trusting us with the care of ${property}. This report summarizes what we observed on our visit on ${when}, with our recommendations and priorities so you know exactly what to tackle first.`
+    )] }));
+
+    const hr = headerRows(report).map(([k, v]) => [k === "Date" ? "Visit date" : k, v]);
+    if (hr.length) children.push(labelBox(hr, 2300));
 
     for (const sec of report.sections || []) {
       const c = (report.content || {})[sec.key];
       if (!R.sectionHasContent(sec, c)) continue;
-      children.push(new d.Paragraph({
-        keepNext: true, spacing: { before: 360, after: 160 },
-        border: { bottom: { color: LEAF, space: 4, style: d.BorderStyle.SINGLE, size: 12 } },
-        children: [new d.TextRun({ text: sec.title.toUpperCase(), font: "Montserrat Light", size: 28, color: BROWN, characterSpacing: 20 })],
-      }));
+      children.push(new d.Paragraph({ heading: d.HeadingLevel.HEADING_1, children: [t(sec.title)] }));
+
       if (sec.kind === "notes") children.push(...rich(c.text));
 
       if (sec.kind === "observations" || sec.kind === "photos") {
-        const PHOTO_COL = sec.kind === "photos" ? 4900 : 4300;
-        for (const it of visibleItems(sec, c)) {
+        const photoCol = sec.kind === "photos" ? 4500 : 4300;
+        const maxW = Math.floor((photoCol - 240) / PX), maxH = sec.kind === "photos" ? 300 : 280;
+        const items = visibleItems(sec, c);
+        items.forEach((it, n) => {
           const p = it.photo ? photos.get(it.photo.id) : null;
-          const textParas = [];
+          const name = sec.kind === "photos" ? `Photo ${n + 1}` : `Observation ${n + 1}`;
+          const text = [kicker(name)];
           if (sec.kind === "observations") {
-            if (String(it.text || "").trim()) textParas.push(label("Observation:"), ...rich(it.text));
-            if (String(it.recommendation || "").trim()) textParas.push(label("Recommendation:"), ...rich(it.recommendation));
-          } else if (String(it.note || "").trim()) textParas.push(...rich(it.note));
-          if (!textParas.length) textParas.push(new d.Paragraph({ children: [] }));
-          if (p) {
-            const maxW = Math.floor((PHOTO_COL - 200) / 15); // twips to px (15 twips per px)
-            children.push(new d.Table({
-              width: { size: CONTENT_W, type: d.WidthType.DXA }, columnWidths: [PHOTO_COL, CONTENT_W - PHOTO_COL], borders: noBorders,
-              rows: [new d.TableRow({ cantSplit: true, children: [
-                new d.TableCell({ width: { size: PHOTO_COL, type: d.WidthType.DXA }, margins: { top: 60, bottom: 60, left: 0, right: 200 }, children: [img(p, maxW, sec.kind === "photos" ? 340 : 300)] }),
-                new d.TableCell({ width: { size: CONTENT_W - PHOTO_COL, type: d.WidthType.DXA }, margins: { top: 60, bottom: 60, left: 100, right: 0 }, children: textParas }),
-              ] })],
-            }));
-          } else {
-            children.push(...textParas);
-          }
-          children.push(new d.Paragraph({ spacing: { after: 120 }, border: { bottom: { color: "E2E2E2", space: 4, style: d.BorderStyle.SINGLE, size: 4 } }, children: [] }));
-        }
+            if (String(it.text || "").trim()) text.push(label("Observation:"), ...rich(it.text));
+            if (String(it.recommendation || "").trim()) text.push(label("Recommendation:", { spacing: { before: 120, after: 40 } }), ...rich(it.recommendation));
+          } else if (String(it.note || "").trim()) text.push(...rich(it.note));
+          const last = n === items.length - 1;
+          const rowBorder = last ? none : { style: d.BorderStyle.SINGLE, size: 4, color: "E2E2E2" };
+          const cells = p
+            ? [
+                new d.TableCell({ width: { size: photoCol, type: d.WidthType.DXA }, margins: { top: 160, bottom: 200, left: 0, right: 240 }, borders: { bottom: rowBorder, top: none, left: none, right: none },
+                  children: [picture(p, maxW, maxH, `${name}, ${property}`)] }),
+                new d.TableCell({ width: { size: CONTENT_W - photoCol, type: d.WidthType.DXA }, margins: { top: 160, bottom: 200, left: 0, right: 0 }, borders: { bottom: rowBorder, top: none, left: none, right: none },
+                  children: text }),
+              ]
+            : [new d.TableCell({ columnSpan: 2, width: { size: CONTENT_W, type: d.WidthType.DXA }, margins: { top: 160, bottom: 200, left: 0, right: 0 }, borders: { bottom: rowBorder, top: none, left: none, right: none }, children: text })];
+          children.push(new d.Table({
+            width: { size: CONTENT_W, type: d.WidthType.DXA }, columnWidths: [photoCol, CONTENT_W - photoCol],
+            layout: d.TableLayoutType.FIXED, borders: noBorders,
+            rows: [new d.TableRow({ cantSplit: true, children: cells })],
+          }));
+        });
       }
 
       if (sec.kind === "priorities") {
-        const TW = 2600;
-        const head = new d.TableRow({ tableHeader: true, children: ["Priority", "What needs to happen"].map((t, i) =>
-          new d.TableCell({ width: { size: i ? CONTENT_W - TW : TW, type: d.WidthType.DXA }, shading: { fill: BROWN, type: d.ShadingType.CLEAR, color: "auto" }, margins: { top: 80, bottom: 80, left: 140, right: 140 },
-            children: [new d.Paragraph({ children: [new d.TextRun({ text: t, bold: true, color: "FFFFFF", font: FONT })] })] })) });
+        const TW = 2500;
+        const head = new d.TableRow({ tableHeader: true, cantSplit: true, children: ["Priority", "What needs to happen"].map((h, i) =>
+          new d.TableCell({ width: { size: i ? CONTENT_W - TW : TW, type: d.WidthType.DXA }, shading: shade(BROWN), margins: cellPad,
+            children: [new d.Paragraph({ style: "HHBody", spacing: { after: 0 }, children: [t(h, { bold: true, color: "FFFFFF" })] })] })) });
         const rows = [head];
         for (const g of R.groupPriorities(c.items)) {
           g.items.forEach((it, i) => {
             const cells = [];
-            if (i === 0) cells.push(new d.TableCell({ rowSpan: g.items.length, width: { size: TW, type: d.WidthType.DXA }, shading: { fill: PANEL, type: d.ShadingType.CLEAR, color: "auto" }, margins: { top: 80, bottom: 80, left: 140, right: 140 },
-              children: [new d.Paragraph({ children: [new d.TextRun({ text: g.label, bold: true, color: BROWN, font: FONT })] }), new d.Paragraph({ children: [new d.TextRun({ text: g.sub, size: 18, color: GRAY, font: FONT })] })] }));
-            cells.push(new d.TableCell({ width: { size: CONTENT_W - TW, type: d.WidthType.DXA }, shading: { fill: PANEL, type: d.ShadingType.CLEAR, color: "auto" }, margins: { top: 80, bottom: 40, left: 140, right: 140 }, children: rich(it.text) }));
+            if (i === 0) cells.push(new d.TableCell({ rowSpan: g.items.length, width: { size: TW, type: d.WidthType.DXA }, shading: shade(PANEL), margins: cellPad,
+              children: [
+                new d.Paragraph({ style: "HHBody", spacing: { after: 0 }, children: [t(g.label, { bold: true, color: BROWN })] }),
+                new d.Paragraph({ style: "HHBody", spacing: { after: 0 }, children: [t(g.sub, { size: 17, color: GRAY })] }),
+              ] }));
+            const body = rich(it.text);
+            cells.push(new d.TableCell({ width: { size: CONTENT_W - TW, type: d.WidthType.DXA }, shading: shade(PANEL), margins: { top: 100, bottom: 40, left: 160, right: 160 }, children: body }));
             rows.push(new d.TableRow({ cantSplit: true, children: cells }));
           });
         }
-        children.push(new d.Table({ width: { size: CONTENT_W, type: d.WidthType.DXA }, columnWidths: [TW, CONTENT_W - TW], borders: whiteBorders, rows }));
+        children.push(new d.Table({ width: { size: CONTENT_W, type: d.WidthType.DXA }, columnWidths: [TW, CONTENT_W - TW], layout: d.TableLayoutType.FIXED, borders: gapBorders, rows }));
       }
     }
 
-    // Signature (RC-04)
-    const sig = R.signatureLines(report.consultant);
+    // Signature box (RC-04)
+    const sig = R.signatureLines(cons);
     if (sig.length) {
-      children.push(new d.Paragraph({ spacing: { before: 480, after: 60 }, keepNext: true, children: [new d.TextRun({ text: "Prepared by:", bold: true, color: BROWN, font: FONT })] }));
-      sig.forEach((l, i) => children.push(new d.Paragraph({ keepNext: i < sig.length - 1, spacing: { after: 20 }, children: [new d.TextRun({ text: l, bold: i === 0, font: FONT, color: i === 0 ? TEXT : GRAY })] })));
+      children.push(spacer(240));
+      children.push(labelBox([["Prepared by", sig.map((l, i) => new d.Paragraph({ style: "HHBody", spacing: { after: i === sig.length - 1 ? 0 : 20 },
+        children: [t(l, { bold: i === 0, color: i === 0 ? TEXT : GRAY })] }))]], 2300));
     }
 
-    const logoUrl = await logo();
-    const firstHeader = new d.Header({ children: [new d.Paragraph({ children: [new d.ImageRun({ type: "png", data: dataUrlToBytes(logoUrl), transformation: { width: 150, height: Math.round(150 * 620 / 844) } })] })] });
     const footer = new d.Footer({ children: [new d.Paragraph({
-      tabStops: [{ type: d.TabStopType.RIGHT, position: CONTENT_W }],
-      border: { top: { color: LEAF, space: 6, style: d.BorderStyle.SINGLE, size: 6 } },
+      alignment: d.AlignmentType.CENTER,
       children: [
-        new d.TextRun({ text: "Harmony Horticulture", size: 16, color: GRAY, font: FONT }),
-        new d.TextRun({ children: ["\tPage ", d.PageNumber.CURRENT, " of ", d.PageNumber.TOTAL_PAGES], size: 16, color: GRAY, font: FONT }),
+        t("Harmony Horticulture", { allCaps: true, size: 16, color: GRAY }),
+        t("   |   Science-backed plant care and landscape stewardship   |   ", { size: 16, color: GRAY }),
+        new d.TextRun({ children: ["Page ", d.PageNumber.CURRENT, " of ", d.PageNumber.TOTAL_PAGES], size: 16, color: GRAY }),
       ],
     })] });
+    const laterHeader = new d.Header({ children: [new d.Paragraph({ alignment: d.AlignmentType.RIGHT,
+      children: [t(`${property}  |  ${report.type_name}`, { allCaps: true, size: 16, color: GRAY })] })] });
+
+    // Montserrat travels inside the file, so it looks right on computers without it
+    let fonts = [];
+    try { fonts = [{ name: FONT, data: await fontBytes("Montserrat_400Regular.ttf") }, { name: LIGHT, data: await fontBytes("Montserrat_300Light.ttf") }]; } catch (e) { fonts = []; }
+    if (opts.embedFonts === false) fonts = [];
 
     const doc = new d.Document({
-      creator: "Harmony Horticulture",
-      title: `${report.type_name} - ${report.property || report.client_name}`,
-      styles: { default: { document: { run: { font: FONT, size: 21, color: TEXT }, paragraph: { spacing: { line: 288, lineRule: d.LineRuleType.AUTO } } } } },
-      numbering: { config: [{ reference: "hh-bullets", levels: [{ level: 0, format: d.LevelFormat.BULLET, text: "•", alignment: d.AlignmentType.LEFT, style: { paragraph: { indent: { left: 360, hanging: 260 } }, run: { color: GREEN } } }] }] },
+      creator: cons.name || "Harmony Horticulture",
+      lastModifiedBy: cons.name || "Harmony Horticulture",
+      title: `${report.type_name} - ${property}`,
+      subject: `${report.type_name} for ${property}`,
+      keywords: "Harmony Horticulture, property report",
+      fonts,
+      features: { updateFields: false },
+      styles: {
+        default: {
+          document: { run: { font: FONT, size: 21, color: TEXT }, paragraph: { spacing: { after: 120, line: 276, lineRule: d.LineRuleType.AUTO } } },
+          title: { run: { font: LIGHT, size: 48, allCaps: true, color: BROWN, bold: false }, paragraph: { spacing: { before: 280, after: 40 } } },
+          heading1: { run: { font: LIGHT, size: 30, allCaps: true, color: BROWN, bold: false }, paragraph: { spacing: { before: 400, after: 160 }, keepNext: true, keepLines: true, border: rule(LEAF, 8) } },
+        },
+        paragraphStyles: [
+          { id: "HHBody", name: "HH Body", basedOn: "Normal", next: "HHBody", quickFormat: true, run: { font: FONT, size: 21, color: TEXT }, paragraph: { spacing: { after: 120, line: 276, lineRule: d.LineRuleType.AUTO } } },
+          { id: "HHSubtitle", name: "HH Subtitle", basedOn: "Normal", next: "HHBody", quickFormat: true, run: { font: FONT, size: 22, allCaps: true, color: PINK }, paragraph: { spacing: { after: 200 }, border: rule(LEAF, 8) } },
+          { id: "HHLabel", name: "HH Label", basedOn: "Normal", next: "HHBody", quickFormat: true, run: { font: FONT, size: 22, bold: true, color: BROWN }, paragraph: { spacing: { before: 0, after: 40 }, keepNext: true } },
+          { id: "HHKicker", name: "HH Item Number", basedOn: "Normal", next: "HHBody", quickFormat: true, run: { font: FONT, size: 16, bold: true, allCaps: true, color: PINK, characterSpacing: 20 }, paragraph: { spacing: { before: 0, after: 80 }, keepNext: true } },
+        ],
+      },
+      numbering: { config: [{ reference: "hh-bullets", levels: [{ level: 0, format: d.LevelFormat.BULLET, text: "■", alignment: d.AlignmentType.LEFT, style: { paragraph: { indent: { left: 360, hanging: 288 } }, run: { color: GREEN, size: 14 } } }] }] },
       sections: [{
-        properties: { titlePage: true, page: { size: { width: PAGE_W, height: 15840 }, margin: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN, header: 500, footer: 500 } } },
-        headers: { first: firstHeader, default: new d.Header({ children: [new d.Paragraph({ alignment: d.AlignmentType.RIGHT, children: [new d.TextRun({ text: String(report.property || report.client_name || "").toUpperCase(), size: 16, color: PINK, bold: true, font: FONT })] })] }) },
+        properties: { titlePage: true, page: { size: { width: PAGE_W, height: PAGE_H }, margin: { top: 864, bottom: 1008, left: SIDE, right: SIDE, header: 500, footer: 500 } } },
+        headers: { first: new d.Header({ children: [new d.Paragraph({ children: [] })] }), default: laterHeader },
         footers: { first: footer, default: footer },
         children,
       }],
