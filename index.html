@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#2E5240">
+  <title>Harmony Horticulture Reports</title>
+  <link rel="icon" type="image/png" href="assets/favicon-light.png" media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/png" href="assets/favicon-dark.png" media="(prefers-color-scheme: dark)">
+  <link rel="icon" type="image/png" href="assets/favicon-light.png" id="favicon">
+  <script>
+    // Brown favicon for dark browsers, light one otherwise. Also covers
+    // browsers that ignore the media setting on the links above.
+    (function () {
+      var mq = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+      var set = function () { document.getElementById("favicon").href = mq && mq.matches ? "assets/favicon-dark.png" : "assets/favicon-light.png"; };
+      set();
+      if (mq && mq.addEventListener) mq.addEventListener("change", set);
+    })();
+  </script>
+  <link rel="apple-touch-icon" href="assets/mark.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/report.css">
+</head>
+<body>
+  <!-- Sign in -->
+  <div id="authView" class="auth-wrap hidden">
+    <div class="auth-card">
+      <img class="logo" src="assets/logo.png" alt="Harmony Horticulture">
+      <p class="eyebrow">Reports</p>
+      <div id="authContent"></div>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div id="appView" class="shell hidden">
+    <aside class="sidebar">
+      <img class="logo" src="assets/logo-reversed.png" alt="Harmony Horticulture">
+      <nav id="sideNav"></nav>
+      <div class="who">
+        <div id="whoName"></div>
+        <div id="whoRole" class="small" style="opacity:0.8"></div>
+        <button id="signOutBtn" type="button">Sign out</button>
+      </div>
+    </aside>
+    <header class="topbar">
+      <img src="assets/mark-reversed.png" alt="Harmony Horticulture">
+      <button id="signOutBtnMobile" type="button">Sign out</button>
+    </header>
+    <main class="main">
+      <div class="container">
+        <div id="demoBanner" class="demo-banner hidden">
+          Demo mode: sample reports saved in this browser only, and nothing is emailed. Add your Supabase keys in js/config.js to go live.
+          <button type="button" class="small secondary" id="resetDemoBtn" style="margin-left:8px">Reset demo data</button>
+        </div>
+        <section id="view" class="view"></section>
+      </div>
+    </main>
+    <nav class="bottomnav" id="bottomNav"></nav>
+  </div>
+
+  <div id="loading" class="auth-wrap"><p class="muted">Loading…</p></div>
+  <div id="modalRoot"></div>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <script src="vendor/supabase.min.js"></script>
+  <script src="vendor/docx.umd.js"></script>
+  <script src="vendor/jspdf.umd.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/demo-clients.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/exports.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

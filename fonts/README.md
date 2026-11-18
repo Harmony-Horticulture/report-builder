@@ -1,0 +1,1 @@
+Montserrat by Julieta Ulanovsky and the Montserrat Project Authors, licensed under the SIL Open Font License 1.1 (https://openfontlicense.org). These copies are used to put Montserrat inside exported PDFs.
