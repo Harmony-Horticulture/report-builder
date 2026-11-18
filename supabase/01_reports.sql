@@ -206,30 +206,37 @@ language sql stable security definer set search_path = public as $$
   );
 $$;
 
-drop policy if exists "report photos read" on storage.objects;
-create policy "report photos read" on storage.objects for select to authenticated
-  using (bucket_id = 'report-photos' and can_open_report((storage.foldername(name))[1]));
-drop policy if exists "report photos add" on storage.objects;
-create policy "report photos add" on storage.objects for insert to authenticated
-  with check (bucket_id = 'report-photos' and can_open_report((storage.foldername(name))[1]));
-drop policy if exists "report photos change" on storage.objects;
-create policy "report photos change" on storage.objects for update to authenticated
-  using (bucket_id = 'report-photos' and can_open_report((storage.foldername(name))[1]));
-drop policy if exists "report photos delete" on storage.objects;
-create policy "report photos delete" on storage.objects for delete to authenticated
-  using (bucket_id = 'report-photos' and can_open_report((storage.foldername(name))[1]));
-
+-- Photo access rules. Wrapped so that, if Supabase ever refuses a storage
+-- rule, the rest of this file still runs and the final check says so.
 -- Public bucket: anyone with the exact link can download a file, but
 -- nobody can list the folder. Only the report's author or an admin can write.
-drop policy if exists "shared reports add" on storage.objects;
-create policy "shared reports add" on storage.objects for insert to authenticated
-  with check (bucket_id = 'shared-reports' and can_share_report((storage.foldername(name))[1]));
-drop policy if exists "shared reports change" on storage.objects;
-create policy "shared reports change" on storage.objects for update to authenticated
-  using (bucket_id = 'shared-reports' and can_share_report((storage.foldername(name))[1]));
-drop policy if exists "shared reports read own" on storage.objects;
-create policy "shared reports read own" on storage.objects for select to authenticated
-  using (bucket_id = 'shared-reports' and can_share_report((storage.foldername(name))[1]));
+do $outer$
+begin
+  execute $q$drop policy if exists "report photos read" on storage.objects$q$;
+  execute $q$create policy "report photos read" on storage.objects for select to authenticated
+  using (bucket_id = 'report-photos' and can_open_report((storage.foldername(name))[1]))$q$;
+  execute $q$drop policy if exists "report photos add" on storage.objects$q$;
+  execute $q$create policy "report photos add" on storage.objects for insert to authenticated
+  with check (bucket_id = 'report-photos' and can_open_report((storage.foldername(name))[1]))$q$;
+  execute $q$drop policy if exists "report photos change" on storage.objects$q$;
+  execute $q$create policy "report photos change" on storage.objects for update to authenticated
+  using (bucket_id = 'report-photos' and can_open_report((storage.foldername(name))[1]))$q$;
+  execute $q$drop policy if exists "report photos delete" on storage.objects$q$;
+  execute $q$create policy "report photos delete" on storage.objects for delete to authenticated
+  using (bucket_id = 'report-photos' and can_open_report((storage.foldername(name))[1]))$q$;
+  execute $q$drop policy if exists "shared reports add" on storage.objects$q$;
+  execute $q$create policy "shared reports add" on storage.objects for insert to authenticated
+  with check (bucket_id = 'shared-reports' and can_share_report((storage.foldername(name))[1]))$q$;
+  execute $q$drop policy if exists "shared reports change" on storage.objects$q$;
+  execute $q$create policy "shared reports change" on storage.objects for update to authenticated
+  using (bucket_id = 'shared-reports' and can_share_report((storage.foldername(name))[1]))$q$;
+  execute $q$drop policy if exists "shared reports read own" on storage.objects$q$;
+  execute $q$create policy "shared reports read own" on storage.objects for select to authenticated
+  using (bucket_id = 'shared-reports' and can_share_report((storage.foldername(name))[1]))$q$;
+exception when others then
+  raise warning 'Photo storage rules were not set up: %', sqlerrm;
+end
+$outer$;
 
 -- ---------------------------------------------------------------------
 -- Starting report types (admins can change these in the app)
@@ -267,3 +274,16 @@ grant select, insert, update, delete on public.report_types, public.reports, pub
 grant usage, select on sequence public.report_sends_id_seq to authenticated;
 grant execute on function public.update_my_report_profile(text, text, text, text), public.report_people(),
   public.can_open_report(text), public.can_share_report(text) to authenticated;
+
+-- Tell the app's data service about the new tables right away
+notify pgrst, 'reload schema';
+
+-- Final check: shows one line saying whether everything is in place
+select case
+  when to_regclass('public.report_types') is null or to_regclass('public.reports') is null
+    or to_regclass('public.report_sends') is null or to_regclass('public.report_settings') is null
+    then 'Something is missing: send a screenshot of this page'
+  when (select count(*) from pg_policies where schemaname = 'storage' and policyname like 'report photos%') < 4
+    then 'Report tables are ready, but photo storage rules are missing: send a screenshot of this page'
+  else 'Report builder is set up'
+end as result;
