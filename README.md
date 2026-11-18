@@ -4,7 +4,7 @@ A web app for writing branded client reports on a phone or computer: pick a repo
 
 **Try it now:** until Supabase is connected, the app runs in **demo mode** with sample reports kept in your own browser. **Setting it up:** follow [docs/SETUP.md](docs/SETUP.md).
 
-This app is separate from the Time Tracker (its own code and its own web address). It uses the same tools (Supabase, GitHub Pages and Resend), and if both apps use the same Supabase project, one login works in both.
+This app is separate from the Time Tracker (its own code and its own web address). It uses the same tools (Supabase, GitHub Pages and the Google Workspace mailbox for email), and if both apps use the same Supabase project, one login works in both.
 
 ## What it does
 
@@ -36,7 +36,7 @@ This app is separate from the Time Tracker (its own code and its own web address
 
 - Plain HTML, CSS and JavaScript with no build step. GitHub Pages serves the files as they are.
 - [Supabase](https://supabase.com) for sign-in, the database and photo storage. Security rules in the database make sure consultants only see their own reports and admins see everyone's.
-- Two small Supabase Edge Functions: `send-report` emails clients through [Resend](https://resend.com), and `polish-report` calls Claude for AI polish.
+- Two small Supabase Edge Functions: `send-report` emails clients from the Google Workspace mailbox (Gmail SMTP), and `polish-report` calls Claude for AI polish.
 - Word files are made with [docx](https://github.com/dolanmiu/docx) and PDFs with [jsPDF](https://github.com/parallax/jsPDF), both saved in `vendor/`. Montserrat is saved in `fonts/` so PDFs use the brand font.
 
 | File | What's in it |

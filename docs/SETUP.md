@@ -6,7 +6,7 @@ This takes about 30 to 45 minutes, once. You don't need to write code. Until you
 |---|---|---|---|
 | Website | Shows the app at a web address | GitHub Pages (part of GitHub) | Free |
 | Database, sign-in and photos | Stores reports, photos, logins and invitations | Supabase | Free plan; Pro is $25/month if you outgrow it |
-| Email | Sends reports to clients, plus invitations and password resets | Resend | Free up to 3,000 emails/month |
+| Email | Sends reports to clients, plus invitations and password resets | Your Google Workspace mailbox (Gmail) | Included |
 | AI polish (optional, off by default) | Tidies wording | Anthropic (Claude) | Pay per use, usually a few cents per report |
 
 > **One login for both apps:** use the **same Supabase project as the Time Tracker**. Set up the Time Tracker first (its own SETUP.md), then follow the steps below and skip step 1.
@@ -26,7 +26,11 @@ Skip this if the Time Tracker is already set up in Supabase.
 1. In your Supabase project, open **SQL Editor > New query**.
 2. Paste all of [`supabase/01_reports.sql`](../supabase/01_reports.sql) and click **Run**. You should see "Success. No rows returned."
 
-This adds the report tables, photo storage, security rules and the two report types. It doesn't change any Time Tracker data.
+This adds the report tables, photo storage, security rules and the two report types. It doesn't change any Time Tracker data, and it is safe to run again.
+
+3. Open another new query, paste all of **client-contacts.sql** from the project files (the `setup` folder) and click **Run**. It fills in the contact name, email and phone for every customer already in the client list, so picking a client in a report fills them in. It never adds or removes customers. It isn't on GitHub because it has customer email addresses.
+
+Both files are safe to run again, for example after an update.
 
 ## 3. Put the app online (GitHub Pages)
 
@@ -36,6 +40,8 @@ This adds the report tables, photo storage, security rules and the two report ty
 
 ## 4. Connect the app to Supabase
 
+Already done for Harmony Horticulture: [`js/config.js`](../js/config.js) has the Time Tracker's project address and publishable key. Only change it if you move to a different project.
+
 1. In Supabase, go to **Project Settings > API** (or **Data API**) and copy the **Project URL** and the **anon public** key. These are the same two values the Time Tracker uses if you share a project.
 2. In GitHub, open [`js/config.js`](../js/config.js), click the pencil icon, paste the two values between the quotes and click **Commit changes**.
 
@@ -44,16 +50,14 @@ This adds the report tables, photo storage, security rules and the two report ty
 1. In Supabase, go to **Authentication > URL Configuration**.
 2. Under **Redirect URLs**, click **Add URL** and add the address from step 3. (If the Time Tracker is the **Site URL**, leave that as it is. Both addresses just need to be on the list.)
 
-## 6. Email (Resend)
+## 6. Email (your Google Workspace mailbox)
 
-If you already did this for the Time Tracker, invitations and password resets already work. You only need step 6.3 onward for sending reports.
+Reports go out from `accounting@harmonyhorticulture.com`, the same mailbox and app password the Time Tracker uses for sign-in emails. Client replies go to the consultant who wrote the report.
 
-1. Sign up at [resend.com](https://resend.com), add the domain `harmonyhorticulture.com` and add the DNS records it shows you. Send me a screenshot if you'd like help.
-2. In Supabase, **Authentication > Emails > SMTP Settings**: turn on **Custom SMTP** with host `smtp.resend.com`, port `465`, username `resend`, your Resend API key as the password, and sender name `Harmony Horticulture`.
-3. In Supabase, open **Edge Functions > Secrets** and add:
-   - `RESEND_API_KEY`: your Resend API key
-   - `REPORTS_FROM`: `Harmony Horticulture <reports@harmonyhorticulture.com>`
-   - `APP_URL`: the web address from step 3
+1. In Supabase, open **Edge Functions > Secrets**, click **Add new secret**.
+2. Name: `GMAIL_APP_PASSWORD`. Value: the 16-letter Google app password (the same one you entered in Supabase's SMTP settings). Click **Save**.
+
+Type the password straight into Supabase. Don't paste it into chat or email.
 
 ## 7. Add the two helpers (Edge Functions)
 
@@ -69,7 +73,16 @@ AI polish stays off until an admin turns it on under **Settings**. When you want
 2. In Supabase **Edge Functions > Secrets**, add `ANTHROPIC_API_KEY` with that key.
 3. In the app, go to **Settings** and tick **Turn on AI polish**.
 
-## 9. Try it
+## 9. Put it on your phone
+
+Open the app's web address on the phone, then:
+
+- **iPhone (Safari):** tap the Share button, then **Add to Home Screen**.
+- **Android (Chrome):** tap the **⋮** menu, then **Add to Home screen** or **Install app**.
+
+It opens full screen like an app, with the Harmony icon. Updates show up on their own.
+
+## 10. Try it
 
 1. Open the app and sign in (same email and password as the Time Tracker if you share a project).
 2. Fill in your profile, then make a report and send it to your own email to see what clients get.

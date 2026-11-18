@@ -12,6 +12,10 @@
 // database is set up. Nothing is emailed in demo mode.
 // =====================================================================
 window.HH_CONFIG = {
-  SUPABASE_URL: "",       // looks like https://abcdefghijk.supabase.co
-  SUPABASE_ANON_KEY: "",  // the long "anon public" key
+  // Same Supabase project as the Time Tracker, so one login works in both
+  SUPABASE_URL: "https://toqirqxhlisnvggxshxz.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_npyRIEu3nfnKbHHGcfc_Gg_5J3a7HSh", // "publishable" (anon) key
+
+  // The Time Tracker, opened from "Time tracker" in the menu
+  TIME_TRACKER_URL: "https://harmony-horticulture.github.io/time-tracker/",
 };

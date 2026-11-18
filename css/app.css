@@ -244,3 +244,16 @@ td.num, th.num { text-align: right; }
   .preview-wrap { padding: 0; background: transparent; }
   .toolbar { position: static; }
 }
+
+/* Priority level picker under Next Steps / Priorities */
+.add-level { margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+.add-level label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.add-level .btn-row { flex-wrap: nowrap; align-items: center; }
+.add-level select { width: auto; min-width: 180px; margin: 0; }
+
+/* Link over to the Time Tracker */
+.sidebar nav a.nav-link { display: block; color: var(--white); text-decoration: none; padding: 11px 14px; margin-bottom: 4px; border-radius: 8px; font-weight: 500; }
+.sidebar nav a.nav-link:hover { background: rgba(255,255,255,0.08); }
+@media (max-width: 820px) {
+  .bottomnav a.nav-link { flex: 1; color: var(--gray); font-size: 0.72rem; padding: 12px 6px; text-align: center; text-decoration: none; white-space: nowrap; font-weight: 600; }
+}

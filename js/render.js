@@ -7,6 +7,9 @@
   const TIERS = [
     { key: "p1", label: "Priority 1", sub: "Immediate" },
     { key: "p2", label: "Priority 2", sub: "Near term" },
+    { key: "p3", label: "Priority 3", sub: "Next few months" },
+    { key: "p4", label: "Priority 4", sub: "This year" },
+    { key: "p5", label: "Priority 5", sub: "When time allows" },
     { key: "future", label: "Future / ongoing", sub: "Plan ahead" },
   ];
 
@@ -88,7 +91,7 @@
       ["Property", r.property || r.client_name],
       ["Community", r.community],
       ["Contact", r.contact_name],
-      ["Consultant", [r.consultant && r.consultant.name, r.consultant && r.consultant.title].filter(Boolean).join(", ")],
+      ["Consultant", (r.consultant && r.consultant.name) || ""],
       ["Date", niceDate(r.report_date)],
     ].filter(([, v]) => v && String(v).trim());
 
