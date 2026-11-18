@@ -61,3 +61,4 @@
   .rp-punch th:nth-child(3), .rp-punch th:nth-child(4), .rp-punch th:nth-child(5) { width: 62px; }
   .rp-punch { font-size: 0.78rem; }
 }
+.rp-tag.rp-map { color: #009344; border-color: #9FD3B0; text-decoration: none; font-weight: 600; }

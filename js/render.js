@@ -123,6 +123,9 @@
     return tags;
   }
 
+  // Link that opens an item's spot in the phone's or computer's map app
+  const mapUrl = (loc) => (loc && isFinite(loc.lat) && isFinite(loc.lng) ? `https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}` : "");
+
   function signatureLines(cons) {
     cons = cons || {};
     return [cons.name, cons.title, cons.credentials, cons.email, cons.phone].filter((x) => x && String(x).trim());
@@ -170,7 +173,7 @@
             const url = it.photo ? photoUrl(it.photo) : "";
             const tags = punchTags(it);
             body += `<tr class="st-${esc(it.status || "open")}"><td class="rp-pphoto">${url ? `<img src="${esc(url)}" alt="">` : ""}</td>
-              <td>${String(it.text || "").trim() ? `<div class="rp-rich rp-task">${richHtml(it.text)}</div>` : ""}${String(it.note || "").trim() ? `<div class="rp-rich rp-pnote">${richHtml(it.note)}</div>` : ""}${tags.map((x) => `<span class="rp-tag">${esc(x)}</span>`).join("")}</td>
+              <td>${String(it.text || "").trim() ? `<div class="rp-rich rp-task">${richHtml(it.text)}</div>` : ""}${String(it.note || "").trim() ? `<div class="rp-rich rp-pnote">${richHtml(it.note)}</div>` : ""}${tags.map((x) => `<span class="rp-tag">${esc(x)}</span>`).join("")}${mapUrl(it.loc) ? `<a class="rp-tag rp-map" href="${esc(mapUrl(it.loc))}" target="_blank" rel="noopener">📍 View on map</a>` : ""}</td>
               <td>${esc(tierShort(it.tier))}</td><td>${esc(it.assigned || "")}</td><td class="rp-status">${esc(statusLabel(it.status))}</td></tr>`;
           }
           body += `</tbody></table>`;
@@ -205,5 +208,5 @@
       </article>`;
   }
 
-  window.Report = { TIERS, esc, parseRich, richHtml, plain, niceDate, fileBase, sectionHasContent, groupPriorities, signatureLines, reportHtml, STATUSES, statusLabel, tierShort, shortDate, groupPunch, punchCounts, punchTags, punchVisible };
+  window.Report = { TIERS, esc, parseRich, richHtml, plain, niceDate, fileBase, sectionHasContent, groupPriorities, signatureLines, reportHtml, STATUSES, statusLabel, tierShort, shortDate, groupPunch, punchCounts, punchTags, punchVisible, mapUrl };
 })();

@@ -453,6 +453,17 @@
   // Items are grouped by inspection date; open items can come over from last month.
   const firstLine = (t) => String(t || "").split("\n").map((l) => l.replace(/^\s*[-•*]\s+/, "").replace(/\*\*/g, "").trim()).find(Boolean) || "";
   const newPunchItem = (date) => ({ id: uid(), photo: null, date, text: "", note: "", tier: "", assigned: "", status: "open", approval: "no", carried: "" });
+  // Location of a punch list item (where its photo was taken)
+  const wantsLoc = (secKey) => { const sec = state.report.sections.find((x) => x.key === secKey); return !!sec && sec.kind === "punchlist"; };
+  let locDeniedShown = false;
+  function setLoc(it, loc) {
+    if (loc && loc.denied) {
+      if (!locDeniedShown) { locDeniedShown = true; setTimeout(() => toast("Location is turned off for this site, so the photo has no map pin. Allow location in the browser settings to add one.", true), 1500); }
+      return;
+    }
+    if (Geo.has(loc)) it.loc = loc;
+  }
+  const locNote = (loc) => (loc.src === "photo" ? "(from the photo)" : loc.acc ? `(within about ${loc.acc} m)` : "");
   function punchEditor(s, c, urls) {
     const r = state.report;
     const items = c.items || [];
@@ -490,7 +501,7 @@
           <summary>
             <span class="ps-thumb">${it.photo ? `<img src="${esc(urls[it.photo.id] || "")}" alt="">` : ""}</span>
             <span class="ps-main"><span class="ps-text">${esc(firstLine(it.text) || "New item")}</span>
-              <span class="ps-meta">${esc([R.tierShort(it.tier), it.assigned, it.approval === "yes" ? "Approval needed" : "", it.carried ? `From ${R.shortDate(it.carried)}` : ""].filter(Boolean).join(" · "))}</span></span>
+              <span class="ps-meta">${esc([R.tierShort(it.tier), it.assigned, it.approval === "yes" ? "Approval needed" : "", it.carried ? `From ${R.shortDate(it.carried)}` : "", Geo.has(it.loc) ? "📍" : ""].filter(Boolean).join(" · "))}</span></span>
             <button type="button" class="ps-status" data-cycle data-sec="${k}" data-id="${id}" title="Tap to change status">${esc(R.statusLabel(st))}</button>
           </summary>
           <div class="punch-body">
@@ -503,6 +514,10 @@
                 <label class="btn secondary"><input type="file" accept="image/*" data-photo data-sec="${k}" data-id="${id}">${useWebcam() ? "Upload photo" : "Library"}</label>
               </div>
               ${it.photo ? `<button type="button" class="ghost small" data-nophoto data-sec="${k}" data-id="${id}">No photo</button>` : ""}
+              <div class="loc-row">${Geo.has(it.loc)
+                ? `📍 <a href="${esc(Geo.mapUrl(it.loc))}" target="_blank" rel="noopener">Open in Maps</a> <span class="muted">${esc(locNote(it.loc))}</span>
+                   <button type="button" class="ghost small" data-lochere data-sec="${k}" data-id="${id}">Update</button><button type="button" class="ghost small" data-locclear data-sec="${k}" data-id="${id}">Remove</button>`
+                : `<button type="button" class="secondary small" data-lochere data-sec="${k}" data-id="${id}">📍 Use my location</button>`}</div>
             </div>
             <div>
               ${textArea(`item:${s.key}:${it.id}:text`, it.text, { placeholder: "What needs to be done", rows: 2, label: "Task" })}
@@ -615,6 +630,18 @@
       const it = sectionItems(b.dataset.sec).find((x) => x.id === b.dataset.id);
       const order = R.STATUSES.map((x) => x.key);
       it.status = order[(order.indexOf(it.status || "open") + 1) % order.length];
+      scheduleSave(); await redraw();
+    }));
+    $$("[data-lochere]").forEach((b) => (b.onclick = async () => {
+      b.disabled = true; toast("Finding your location…");
+      const loc = await Geo.deviceLocation();
+      const it = sectionItems(b.dataset.sec).find((x) => x.id === b.dataset.id);
+      if (loc && loc.denied) { toast("Location is turned off for this site. Allow it in the browser settings to add a map pin.", true); b.disabled = false; return; }
+      if (!Geo.has(loc)) { toast("Couldn't get a location. Try again outdoors.", true); b.disabled = false; return; }
+      it.loc = loc; scheduleSave(); await redraw(); toast("Location saved.");
+    }));
+    $$("[data-locclear]").forEach((b) => (b.onclick = async () => {
+      delete sectionItems(b.dataset.sec).find((x) => x.id === b.dataset.id).loc;
       scheduleSave(); await redraw();
     }));
     $$("[data-addpunch]").forEach((b) => (b.onclick = async () => {
@@ -740,7 +767,8 @@
       try {
         toast("Adding photo…");
         const it = sectionItems(inp.dataset.sec).find((x) => x.id === inp.dataset.id);
-        it.photo = await addPhoto(file);
+        const [photo, loc] = await Promise.all([addPhoto(file), wantsLoc(inp.dataset.sec) ? Geo.forPhoto(file, inp.hasAttribute("capture")) : null]);
+        it.photo = photo; setLoc(it, loc);
         scheduleSave(); await redraw();
         toast("Photo added.");
       } catch (e) { fail(e); }
@@ -751,7 +779,8 @@
       try {
         toast("Adding photo…");
         const it = sectionItems(b.dataset.sec).find((x) => x.id === b.dataset.id);
-        it.photo = await addPhoto(file);
+        const [photo, loc] = await Promise.all([addPhoto(file), wantsLoc(b.dataset.sec) ? Geo.forPhoto(file, true) : null]);
+        it.photo = photo; setLoc(it, loc);
         scheduleSave(); await redraw();
         toast("Photo added.");
       } catch (e) { fail(e); }
@@ -763,7 +792,13 @@
         toast(`Adding ${files.length} photo${files.length > 1 ? "s" : ""}…`);
         const sec = r.sections.find((x) => x.key === inp.dataset.sec);
         const c = r.content[sec.key];
-        for (const f of files) sectionItems(sec.key).push(sec.kind === "punchlist" ? { ...newPunchItem(c.newDate || r.report_date), photo: await addPhoto(f) } : { id: uid(), photo: await addPhoto(f), note: "" });
+        for (const f of files) {
+          if (sec.kind !== "punchlist") { sectionItems(sec.key).push({ id: uid(), photo: await addPhoto(f), note: "" }); continue; }
+          const it = newPunchItem(c.newDate || r.report_date);
+          const [photo, loc] = await Promise.all([addPhoto(f), Geo.forPhoto(f, false)]);
+          it.photo = photo; setLoc(it, loc);
+          sectionItems(sec.key).push(it);
+        }
         scheduleSave(); await redraw();
         toast("Photos added.");
       } catch (e) { fail(e); }

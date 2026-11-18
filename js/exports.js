@@ -240,6 +240,8 @@
             if (String(it.note || "").trim()) body.push(...smallRich(it.note, { color: GRAY }));
             const tags = R.punchTags(it);
             if (tags.length) body.push(small(tags.join("  ·  "), { size: 15, color: BROWN, italics: true }));
+            if (R.mapUrl(it.loc)) body.push(new d.Paragraph({ style: "HHBody", spacing: { after: 0 }, children: [new d.ExternalHyperlink({ link: R.mapUrl(it.loc),
+              children: [t("View on map", { size: 15, color: GREEN, underline: {} })] })] }));
             if (!body.length) body.push(small(""));
             const st = it.status || "open";
             rows.push(new d.TableRow({ cantSplit: true, children: [
@@ -512,7 +514,8 @@
             const tagLines = tags ? cellLines(tags, COLS[1]) : [];
             const assignedLines = cellLines(it.assigned, COLS[3]);
             const prioLines = cellLines(R.tierShort(it.tier), COLS[2]);
-            const h = Math.max(size ? size.h + 2 * PAD : 0, taskH + noteH + tagLines.length * 10 + 2 * PAD - 2, assignedLines.length * LEAD + 2 * PAD, prioLines.length * LEAD + 2 * PAD, 24);
+            const map = R.mapUrl(it.loc);
+            const h = Math.max(size ? size.h + 2 * PAD : 0, taskH + noteH + (tagLines.length + (map ? 1 : 0)) * 10 + 2 * PAD - 2, assignedLines.length * LEAD + 2 * PAD, prioLines.length * LEAD + 2 * PAD, 24);
             if (y + h > BOTTOM) { newPage(); headRow(); }
             const top = y;
             fill(PANEL); COLS.forEach((w, i) => doc.rect(xs[i], top, w, h, "F"));
@@ -521,6 +524,7 @@
             if (taskH) writeRich(task, xs[1] + PAD, tw, SZ + 0.5, LEAD);
             if (noteH) writeRich(it.note, xs[1] + PAD, tw, SZ, LEAD, GRAY);
             if (tagLines.length) { font("normal"); doc.setFontSize(7.5); color(BROWN); tagLines.forEach((l) => { doc.text(l, xs[1] + PAD, y + 7); y += 10; }); }
+            if (map) { font("semibold"); doc.setFontSize(7.5); color(GREEN); doc.textWithLink("View on map", xs[1] + PAD, y + 7, { url: map }); y += 10; }
             const st = it.status || "open";
             font("normal"); doc.setFontSize(SZ); color(TEXT);
             prioLines.forEach((l, i) => doc.text(l, xs[2] + PAD, top + PAD + 7 + i * LEAD));
