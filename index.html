@@ -4,6 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#2E5240">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="HH Reports">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Harmony Horticulture Reports</title>
   <link rel="icon" type="image/png" href="assets/favicon-light.png" media="(prefers-color-scheme: light)">
   <link rel="icon" type="image/png" href="assets/favicon-dark.png" media="(prefers-color-scheme: dark)">
@@ -18,7 +24,6 @@
       if (mq && mq.addEventListener) mq.addEventListener("change", set);
     })();
   </script>
-  <link rel="apple-touch-icon" href="assets/mark.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -76,5 +81,9 @@
   <script src="js/exports.js"></script>
   <script src="js/sample-data.js"></script>
   <script src="js/app.js"></script>
+  <script>
+    // Phone app: lets people use "Add to Home Screen"
+    if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  </script>
 </body>
 </html>

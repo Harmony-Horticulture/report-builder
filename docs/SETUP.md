@@ -26,10 +26,11 @@ Skip this if the Time Tracker is already set up in Supabase.
 1. In your Supabase project, open **SQL Editor > New query**.
 2. Paste all of [`supabase/01_reports.sql`](../supabase/01_reports.sql) and click **Run**. You should see "Success. No rows returned."
 
-This adds the report tables, photo storage, security rules and the two report types. It doesn't change any Time Tracker data.
+This adds the report tables, photo storage, security rules and the two report types. It doesn't change any Time Tracker data, and it is safe to run again.
 
-3. Open another new query, paste all of [`supabase/02_client_contacts.sql`](../supabase/02_client_contacts.sql) and click **Run**. This adds a contact person, email and phone to the shared client list (the Time Tracker ignores them).
-4. Open another new query, paste all of **client-contacts.sql** from the project files (the `setup` folder) and click **Run**. It fills in the contact name and email for every customer from your QuickBooks customer list, so picking a client in a report fills them in. It isn't on GitHub because it has customer email addresses.
+3. Open another new query, paste all of **client-contacts.sql** from the project files (the `setup` folder) and click **Run**. It fills in the contact name, email and phone for every customer already in the client list, so picking a client in a report fills them in. It never adds or removes customers. It isn't on GitHub because it has customer email addresses.
+
+Both files are safe to run again, for example after an update.
 
 ## 3. Put the app online (GitHub Pages)
 
@@ -38,6 +39,8 @@ This adds the report tables, photo storage, security rules and the two report ty
 3. After a minute the page shows your web address, like `https://harmony-horticulture.github.io/report-builder/`.
 
 ## 4. Connect the app to Supabase
+
+Already done for Harmony Horticulture: [`js/config.js`](../js/config.js) has the Time Tracker's project address and publishable key. Only change it if you move to a different project.
 
 1. In Supabase, go to **Project Settings > API** (or **Data API**) and copy the **Project URL** and the **anon public** key. These are the same two values the Time Tracker uses if you share a project.
 2. In GitHub, open [`js/config.js`](../js/config.js), click the pencil icon, paste the two values between the quotes and click **Commit changes**.
@@ -72,7 +75,16 @@ AI polish stays off until an admin turns it on under **Settings**. When you want
 2. In Supabase **Edge Functions > Secrets**, add `ANTHROPIC_API_KEY` with that key.
 3. In the app, go to **Settings** and tick **Turn on AI polish**.
 
-## 9. Try it
+## 9. Put it on your phone
+
+Open the app's web address on the phone, then:
+
+- **iPhone (Safari):** tap the Share button, then **Add to Home Screen**.
+- **Android (Chrome):** tap the **⋮** menu, then **Add to Home screen** or **Install app**.
+
+It opens full screen like an app, with the Harmony icon. Updates show up on their own.
+
+## 10. Try it
 
 1. Open the app and sign in (same email and password as the Time Tracker if you share a project).
 2. Fill in your profile, then make a report and send it to your own email to see what clients get.

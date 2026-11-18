@@ -64,7 +64,7 @@
         <h1>Welcome</h1>
         <p class="muted small" style="text-align:center">Demo mode. Pick someone to try the app as. Nothing here is saved online or emailed.</p>
         ${people.map((p) => `<button class="primary ${p.role === "admin" ? "" : "secondary"}" data-as="${esc(p.id)}" style="margin-bottom:8px">Sign in as ${esc(p.full_name)} · ${p.role}</button>`).join("")}
-        <p class="hint" style="text-align:center">Robbie hasn't filled in a profile yet, so he sees the first-time profile screen.</p>
+        <p class="hint" style="text-align:center">Robbie hasn't filled in a profile yet, so the first-time profile screen comes up.</p>
       `);
       $$("[data-as]").forEach((b) => (b.onclick = () => S.signInAs(b.dataset.as)));
       return;
@@ -134,12 +134,15 @@
     $("#authView").classList.add("hidden");
     $("#appView").classList.remove("hidden");
     $("#whoName").textContent = state.me.full_name || state.me.email;
-    $("#whoRole").textContent = state.me.role === "admin" ? "Admin" : "Consultant";
+    $("#whoRole").textContent = { admin: "Admin", technician: "Technician" }[state.me.role] || "Consultant";
     $("#demoBanner").classList.toggle("hidden", S.mode !== "demo");
     const items = NAV.filter((n) => !n.admin || isAdmin());
     $("#sideNav").innerHTML = items.map((n, i) =>
       (n.admin && !items[i - 1].admin ? `<div class="nav-label">Admin</div>` : "") + `<button type="button" data-route="${n.route}">${n.label}</button>`).join("");
-    $("#bottomNav").innerHTML = items.map((n) => `<button type="button" data-route="${n.route}">${n.label}</button>`).join("");
+    // Link over to the Time Tracker, for every role
+    const tt = esc((window.HH_CONFIG && window.HH_CONFIG.TIME_TRACKER_URL) || "https://harmony-horticulture.github.io/time-tracker/");
+    $("#sideNav").innerHTML += `<div class="nav-label">Apps</div><a class="nav-link" href="${tt}">Time tracker ↗</a>`;
+    $("#bottomNav").innerHTML = items.map((n) => `<button type="button" data-route="${n.route}">${n.label}</button>`).join("") + `<a class="nav-link" href="${tt}">Time</a>`;
     $$("[data-route]").forEach((b) => (b.onclick = () => go(b.dataset.route)));
   }
   function setActive(route) {
@@ -902,7 +905,7 @@
         <div class="grid4">
           <div class="field"><label for="ivName">Name</label><input id="ivName"></div>
           <div class="field"><label for="ivEmail">Email</label><input id="ivEmail" type="email"></div>
-          <div class="field"><label for="ivRole">Role</label><select id="ivRole"><option value="consultant">Consultant</option><option value="admin">Admin</option></select></div>
+          <div class="field"><label for="ivRole">Role</label><select id="ivRole"><option value="consultant">Consultant</option><option value="technician">Technician</option><option value="admin">Admin</option></select></div>
           <div class="field" style="padding-top:28px"><button type="button" id="ivSend" style="width:100%">Send invitation</button></div>
         </div>
         ${invites.length ? `<p class="small"><b>Waiting to accept:</b> ${invites.map((i) => `${esc(i.full_name || i.email)} (${esc(i.email)}, ${esc(i.role)})`).join("; ")}</p>` : ""}
@@ -911,7 +914,7 @@
         <thead><tr><th>Name</th><th>Email</th><th>Title</th><th>Role</th><th>Active</th></tr></thead>
         <tbody>${people.map((p) => `<tr>
           <td>${esc(p.full_name)}</td><td>${esc(p.email)}</td><td>${esc([p.title, p.credentials].filter(Boolean).join(", "))}</td>
-          <td><select data-role="${esc(p.id)}" ${p.id === state.me.id ? "disabled" : ""}><option value="consultant" ${p.role === "consultant" ? "selected" : ""}>Consultant</option><option value="admin" ${p.role === "admin" ? "selected" : ""}>Admin</option></select></td>
+          <td><select data-role="${esc(p.id)}" ${p.id === state.me.id ? "disabled" : ""}><option value="consultant" ${p.role === "consultant" ? "selected" : ""}>Consultant</option><option value="technician" ${p.role === "technician" ? "selected" : ""}>Technician</option><option value="admin" ${p.role === "admin" ? "selected" : ""}>Admin</option></select></td>
           <td><input type="checkbox" data-active="${esc(p.id)}" ${p.active ? "checked" : ""} ${p.id === state.me.id ? "disabled" : ""}></td></tr>`).join("")}</tbody>
       </table></div></div>`;
     $("#ivSend").onclick = async () => {

@@ -2,14 +2,16 @@
 -- Harmony Horticulture Report Builder: report tables
 --
 -- HOW TO USE: In Supabase, open SQL Editor > New query, paste this whole
--- file, and click Run. Run it once.
+-- file, and click Run. It is safe to run again (for example after an
+-- update): it skips anything that is already there.
 --
 -- It needs the sign-in tables (profiles, invitations, clients) first:
 -- either the Time Tracker's setup in the same project, or
 -- 00_shared_login_and_clients.sql.
 --
--- It only ADDS things. It does not change any Time Tracker table except
--- adding title and credentials columns to profiles.
+-- It only ADDS things. It does not change any Time Tracker data. The only
+-- changes to shared tables are new columns: title, credentials and phone
+-- on profiles, and contact name, email and phone on clients.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -18,6 +20,12 @@
 alter table public.profiles add column if not exists title       text not null default '';
 alter table public.profiles add column if not exists credentials text not null default '';
 alter table public.profiles add column if not exists phone       text not null default '';
+
+-- Client contact (filled in from the QuickBooks customer list). Used to
+-- greet the client and send the report. The Time Tracker ignores these.
+alter table public.clients add column if not exists contact_name  text;
+alter table public.clients add column if not exists contact_email text;
+alter table public.clients add column if not exists phone         text;
 
 -- People can update their own name, title, credentials and phone, and
 -- nothing else (role and active stay admin-only).
@@ -42,7 +50,7 @@ grant execute on function public.update_my_report_profile(text, text, text, text
 --   [{"key":"overview","title":"Overview","kind":"notes","help":"..."}]
 -- kind is one of: notes, observations, photos, priorities
 -- ---------------------------------------------------------------------
-create table public.report_types (
+create table if not exists public.report_types (
   id          uuid primary key default gen_random_uuid(),
   name        text not null unique,
   description text not null default '',
@@ -57,7 +65,7 @@ create table public.report_types (
 -- Each report keeps its own copy of the sections it was started with,
 -- so editing a template never changes old reports.
 -- ---------------------------------------------------------------------
-create table public.reports (
+create table if not exists public.reports (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null default auth.uid() references public.profiles(id),
   type_id       uuid references public.report_types(id) on delete set null,
@@ -83,8 +91,8 @@ create table public.reports (
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
 );
-create index reports_user on public.reports (user_id, updated_at desc);
-create index reports_date on public.reports (report_date desc);
+create index if not exists reports_user on public.reports (user_id, updated_at desc);
+create index if not exists reports_date on public.reports (report_date desc);
 
 create or replace function public.touch_report() returns trigger
 language plpgsql as $$
@@ -92,11 +100,12 @@ begin
   new.updated_at := now();
   return new;
 end $$;
+drop trigger if exists reports_touch on public.reports;
 create trigger reports_touch before update on public.reports
   for each row execute function public.touch_report();
 
 -- Send history: who sent which version to whom, and when (RC-26, RC-28)
-create table public.report_sends (
+create table if not exists public.report_sends (
   id         bigint generated always as identity primary key,
   report_id  uuid not null references public.reports(id) on delete cascade,
   version    int not null,
@@ -105,10 +114,10 @@ create table public.report_sends (
   message    text not null default '',
   sent_at    timestamptz not null default now()
 );
-create index report_sends_report on public.report_sends (report_id, sent_at desc);
+create index if not exists report_sends_report on public.report_sends (report_id, sent_at desc);
 
 -- App settings (one row)
-create table public.report_settings (
+create table if not exists public.report_settings (
   id                  int primary key default 1 check (id = 1),
   -- AI polish stays off until Harmony Horticulture approves it (RC-19)
   ai_polish_enabled   boolean not null default false,
@@ -126,27 +135,37 @@ alter table public.reports         enable row level security;
 alter table public.report_sends    enable row level security;
 alter table public.report_settings enable row level security;
 
+drop policy if exists "report types read" on public.report_types;
 create policy "report types read"  on public.report_types for select using (is_active_user());
+drop policy if exists "report types admin" on public.report_types;
 create policy "report types admin" on public.report_types for all using (is_admin()) with check (is_admin());
 
 -- Consultants see and change their own reports; admins see everyone's (RC-01, RC-03)
+drop policy if exists "reports read" on public.reports;
 create policy "reports read" on public.reports for select
   using (is_active_user() and (user_id = auth.uid() or is_admin()));
+drop policy if exists "reports add" on public.reports;
 create policy "reports add" on public.reports for insert
   with check (is_active_user() and user_id = auth.uid());
+drop policy if exists "reports change" on public.reports;
 create policy "reports change" on public.reports for update
   using (is_active_user() and (user_id = auth.uid() or is_admin()))
   with check (is_active_user() and (user_id = auth.uid() or is_admin()));
+drop policy if exists "reports delete" on public.reports;
 create policy "reports delete" on public.reports for delete
   using (is_admin() or (user_id = auth.uid() and status <> 'sent'));
 
+drop policy if exists "sends read" on public.report_sends;
 create policy "sends read" on public.report_sends for select
   using (exists (select 1 from reports r where r.id = report_id and (r.user_id = auth.uid() or is_admin())));
+drop policy if exists "sends add" on public.report_sends;
 create policy "sends add" on public.report_sends for insert
   with check (sent_by = auth.uid() and exists (
     select 1 from reports r where r.id = report_id and (r.user_id = auth.uid() or is_admin())));
 
+drop policy if exists "settings read" on public.report_settings;
 create policy "settings read"  on public.report_settings for select using (is_active_user());
+drop policy if exists "settings admin" on public.report_settings;
 create policy "settings admin" on public.report_settings for update using (is_admin()) with check (is_admin());
 
 -- Everyone signed in can see names, titles and emails of active teammates
@@ -187,21 +206,28 @@ language sql stable security definer set search_path = public as $$
   );
 $$;
 
+drop policy if exists "report photos read" on storage.objects;
 create policy "report photos read" on storage.objects for select to authenticated
   using (bucket_id = 'report-photos' and can_open_report((storage.foldername(name))[1]));
+drop policy if exists "report photos add" on storage.objects;
 create policy "report photos add" on storage.objects for insert to authenticated
   with check (bucket_id = 'report-photos' and can_open_report((storage.foldername(name))[1]));
+drop policy if exists "report photos change" on storage.objects;
 create policy "report photos change" on storage.objects for update to authenticated
   using (bucket_id = 'report-photos' and can_open_report((storage.foldername(name))[1]));
+drop policy if exists "report photos delete" on storage.objects;
 create policy "report photos delete" on storage.objects for delete to authenticated
   using (bucket_id = 'report-photos' and can_open_report((storage.foldername(name))[1]));
 
 -- Public bucket: anyone with the exact link can download a file, but
 -- nobody can list the folder. Only the report's author or an admin can write.
+drop policy if exists "shared reports add" on storage.objects;
 create policy "shared reports add" on storage.objects for insert to authenticated
   with check (bucket_id = 'shared-reports' and can_share_report((storage.foldername(name))[1]));
+drop policy if exists "shared reports change" on storage.objects;
 create policy "shared reports change" on storage.objects for update to authenticated
   using (bucket_id = 'shared-reports' and can_share_report((storage.foldername(name))[1]));
+drop policy if exists "shared reports read own" on storage.objects;
 create policy "shared reports read own" on storage.objects for select to authenticated
   using (bucket_id = 'shared-reports' and can_share_report((storage.foldername(name))[1]));
 
@@ -231,3 +257,13 @@ insert into public.report_types (name, description, sort_order, sections) values
   ]'
 )
 on conflict (name) do nothing;
+
+-- ---------------------------------------------------------------------
+-- Let signed-in people reach the new tables at all (the security rules
+-- above still decide what each person sees). Newer Supabase projects
+-- don't always do this for tables made in the SQL Editor.
+-- ---------------------------------------------------------------------
+grant select, insert, update, delete on public.report_types, public.reports, public.report_sends, public.report_settings to authenticated;
+grant usage, select on sequence public.report_sends_id_seq to authenticated;
+grant execute on function public.update_my_report_profile(text, text, text, text), public.report_people(),
+  public.can_open_report(text), public.can_share_report(text) to authenticated;
