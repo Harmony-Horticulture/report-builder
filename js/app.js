@@ -774,6 +774,7 @@
     }));
     // Dictation (RC-17)
     $$("[data-mic]").forEach((b) => (b.onclick = () => toggleDictation(b)));
+    if (dict) markMic(dict.path, true);
 
     $("#previewBtn").onclick = $("#previewBtn2").onclick = async () => {
       if (!r.client_id && !r.client_name && !r.property) { toast("Pick the client first.", true); return; }
@@ -877,7 +878,19 @@
   }
 
   // --- Dictation (RC-17, RC-18) ----------------------------------------
-  let rec = null, recBtn = null;
+  // One dictation at a time. "dict" is the running one; events from an older
+  // one are ignored, so a session that never reports its end (iPhone Safari
+  // does this) can't block the microphone for the next field.
+  let dict = null;
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  function markMic(path, on) {
+    $$("[data-mic]").forEach((b) => b.classList.toggle("listening", !!on && b.dataset.mic === path));
+  }
+  function endDictation(d) {
+    if (!d) return;
+    if (dict === d) { dict = null; markMic(null, false); }
+    try { d.rec.onresult = d.rec.onerror = d.rec.onend = null; d.rec.abort(); } catch (e) { /* already ended */ }
+  }
   function applyTerms(text) {
     let out = text;
     for (const t of state.settings.dictation_terms || []) {
@@ -887,25 +900,58 @@
     return out;
   }
   function toggleDictation(btn) {
-    if (rec) { rec.stop(); return; }
+    const path = btn.dataset.mic;
+    if (dict) {
+      const d = dict;
+      if (d.path === path) {
+        // Stop: keep what was just said, then make sure it is really finished
+        dict = null; markMic(null, false);
+        try { d.rec.stop(); } catch (e) { /* ended */ }
+        setTimeout(() => endDictation(d), 2000);
+        return;
+      }
+      // A different box: drop the old one and start here right away
+      endDictation(d);
+    }
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { toast("Dictation isn't available in this browser. Use Chrome or Safari, or the microphone on your phone's keyboard.", true); return; }
     if (!navigator.onLine) { toast("Dictation needs an internet connection on this device. You can still use your keyboard's microphone.", true); return; }
-    const ta = $(`textarea[data-path="${CSS.escape(btn.dataset.mic)}"]`);
-    rec = new SR();
-    rec.lang = "en-US"; rec.continuous = true; rec.interimResults = false;
-    recBtn = btn; btn.classList.add("listening");
+    const rec = new SR();
+    const d = { rec, path };
+    rec.lang = "en-US";
+    // iPhone Safari is unreliable with continuous listening: one phrase per tap there
+    rec.continuous = !isIOS;
+    rec.interimResults = false;
     rec.onresult = (ev) => {
       let said = "";
-      for (let i = ev.resultIndex; i < ev.results.length; i++) if (ev.results[i].isFinal) said += ev.results[i][0].transcript;
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        if (!ev.results[i].isFinal) continue;
+        said += ev.results[i][0].transcript;
+      }
       said = applyTerms(said.trim());
       if (!said) return;
-      ta.value = ta.value + (ta.value && !/\s$/.test(ta.value) ? " " : "") + said;
-      ta.dispatchEvent(new Event("input"));
+      // Find the box again each time: the screen may have been redrawn
+      const ta = $(`textarea[data-path="${CSS.escape(path)}"]`);
+      const cur = ta ? ta.value : (state.report ? getPath(state.report, path) : "");
+      const next = cur + (cur && !/\s$/.test(cur) ? " " : "") + said;
+      if (ta) { ta.value = next; ta.dispatchEvent(new Event("input")); }
+      else if (state.report) { setPath(state.report, path, next); scheduleSave(); }
     };
-    rec.onerror = (e) => { if (e.error === "not-allowed") toast("Allow microphone access to dictate.", true); else if (e.error === "network") toast("Dictation needs an internet connection.", true); };
-    rec.onend = () => { if (recBtn) recBtn.classList.remove("listening"); rec = null; recBtn = null; };
-    try { rec.start(); toast("Listening… tap the microphone again to stop."); } catch (e) { rec = null; btn.classList.remove("listening"); }
+    rec.onerror = (e) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") toast("Allow microphone access to dictate.", true);
+      else if (e.error === "network") toast("Dictation needs an internet connection.", true);
+      else if (e.error === "audio-capture") toast("No microphone found.", true);
+    };
+    rec.onend = () => { if (dict === d) { dict = null; markMic(null, false); } };
+    dict = d;
+    markMic(path, true);
+    try {
+      rec.start();
+      toast(isIOS ? "Listening… say one phrase. Tap the microphone again for the next one." : "Listening… tap the microphone again to stop.");
+    } catch (e) {
+      endDictation(d);
+      toast("Couldn't start the microphone. Try again in a moment.", true);
+    }
   }
 
   // =====================================================================
@@ -1227,7 +1273,6 @@
         t.sections = t.sections.filter((s) => s.title.trim());
         if (!t.name) { $("#tErr", m).textContent = "Give the report type a name."; return; }
         if (!t.sections.length) { $("#tErr", m).textContent = "Add at least one section."; return; }
-        const used = new Set();
         t.sections.forEach((s) => {
           let k = s.key || s.title.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "section";
           while (used.has(k)) k += "_2";
