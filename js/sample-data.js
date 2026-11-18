@@ -54,6 +54,22 @@
     future: ["Deadhead roses weekly through the bloom season", "Cut back lantana by one third in early spring", "Review the irrigation schedule when temperatures drop", "Plan spring color for the entry pots"],
   };
 
+  const PUNCH = [
+    { text: "Replace broken drip emitter at the front entry pots", note: "Emitter cap is missing and the pot stays dry." },
+    { text: "Trim bougainvillea off the courtyard wall lights", note: "" },
+    { text: "Remove dead lantana in the motor court bed" },
+    { text: "Re-stake the young olive by the guest house", note: "Tie is rubbing the bark. Use a wide strap." },
+    { text: "Top up decomposed granite along the pool path" },
+    { text: "Clear leaves and debris from the rear drain grates" },
+    { text: "Raise the mesquite canopy over the driveway to 14 feet", note: "Needs the bucket truck." },
+    { text: "Replace two declining Texas sage at the gate" },
+    { text: "Adjust spray heads on the side lawn, overspray onto the wall" },
+    { text: "Fertilize citrus grove with the winter feeding" },
+    { text: "Cut back spent salvia blooms along the walkway" },
+    { text: "Install new solar timer on the fountain pump", note: "Waiting on the owner to pick the model." },
+  ];
+  const TEAM = ["Maintenance crew", "Irrigation tech", "Tree crew", "Harmony", "Owner"];
+
   // A simple drawn landscape so the photo slots aren't empty
   function photo(label, w, h) {
     return new Promise((resolve) => {
@@ -114,6 +130,20 @@
         const items = [];
         for (const o of shuffle(PHOTO_NOTES).slice(0, 5)) items.push({ id: uid(), photo: await addPhoto(o.label), note: o.note });
         report.content[s.key] = { items };
+      } else if (s.kind === "punchlist") {
+        const items = [];
+        const d0 = report.report_date || new Date().toISOString().slice(0, 10);
+        const d1 = new Date(d0 + "T12:00:00"); d1.setDate(d1.getDate() - 13);
+        const dates = [d1.toISOString().slice(0, 10), d0];
+        const tiers = ["p1", "p1", "p2", "p2", "p3", "future"];
+        const statuses = ["open", "open", "progress", "done"];
+        let i = 0;
+        for (const o of shuffle(PUNCH).slice(0, 10)) {
+          items.push({ id: uid(), photo: i % 3 === 2 ? null : await addPhoto(o.text.split(" ").slice(0, 3).join(" ")), date: dates[i < 5 ? 0 : 1], text: o.text, note: o.note || "",
+            tier: pick(tiers), assigned: pick(TEAM), status: pick(statuses), approval: Math.random() < 0.2 ? "yes" : "no", carried: "" });
+          i++;
+        }
+        report.content[s.key] = { items, newDate: d0 };
       } else if (s.kind === "priorities") {
         const items = [];
         for (const [tier, k] of [["p1", 2], ["p2", 2], ["p3", 2], ["future", 2]]) for (const text of shuffle(PRIORITIES[tier]).slice(0, k)) items.push({ id: uid(), tier, text });

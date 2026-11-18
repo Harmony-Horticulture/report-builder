@@ -48,7 +48,7 @@ grant execute on function public.update_my_report_profile(text, text, text, text
 -- Report types and their sections (RC-05, RC-06, RC-08)
 -- sections is a list like
 --   [{"key":"overview","title":"Overview","kind":"notes","help":"..."}]
--- kind is one of: notes, observations, photos, priorities
+-- kind is one of: notes, observations, photos, priorities, punchlist
 -- ---------------------------------------------------------------------
 create table if not exists public.report_types (
   id          uuid primary key default gen_random_uuid(),
@@ -261,6 +261,16 @@ insert into public.report_types (name, description, sort_order, sections) values
     {"key":"summary","title":"Visit Summary","kind":"notes","help":"Optional: one or two sentences about the visit."},
     {"key":"photos","title":"Site Photos","kind":"photos","help":"Add a photo and a short note for each thing you want to show."},
     {"key":"next","title":"Next Steps","kind":"priorities","help":"Optional: what should happen next."}
+  ]'
+),
+(
+  'Punch List',
+  'Estate punch list: a compact table of tasks with photo, priority, who it''s assigned to and status, by inspection date. Can start from last month''s open items.',
+  3,
+  '[
+    {"key":"summary","title":"Visit Summary","kind":"notes","help":"Optional: a few sentences about this month''s inspections."},
+    {"key":"punch","title":"Punch List","kind":"punchlist","help":"One line per task. Tap an item to edit it."},
+    {"key":"followup","title":"Follow-up","kind":"notes","help":"Optional: next inspection and anything the client needs to approve."}
   ]'
 )
 on conflict (name) do nothing;

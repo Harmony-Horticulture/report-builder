@@ -40,3 +40,24 @@
   .rp-section h2 { break-after: avoid; page-break-after: avoid; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+/* Punch list: compact table, one per inspection date */
+.rp-h3 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: #F065A5; font-weight: 700; margin: 18px 0 6px; }
+.rp-count { color: #595959; font-size: 0.85rem; margin: 0 0 4px; }
+.rp-punch { font-size: 0.85rem; table-layout: fixed; }
+.rp-punch th:nth-child(1) { width: 110px; }
+.rp-punch th:nth-child(3), .rp-punch th:nth-child(4) { width: 92px; }
+.rp-punch th:nth-child(5) { width: 84px; }
+.rp-punch th, .rp-punch td { padding: 6px 8px; }
+.rp-punch tr { break-inside: avoid; page-break-inside: avoid; }
+.rp-pphoto img { width: 100%; max-height: 100px; object-fit: cover; display: block; border-radius: 2px; }
+.rp-task p { margin: 0 0 4px; font-weight: 600; }
+.rp-pnote { color: #595959; }
+.rp-pnote p { margin: 0 0 4px; }
+.rp-tag { display: inline-block; font-size: 0.72rem; color: #5F351B; background: #FFFFFF; border: 1px solid #D9C9BC; border-radius: 10px; padding: 0 7px; margin: 2px 4px 0 0; }
+.rp-punch tr.st-done td.rp-status { color: #009344; font-weight: 700; }
+.rp-punch tr.st-progress td.rp-status { color: #B26B00; font-weight: 700; }
+@media (max-width: 700px) {
+  .rp-punch th:nth-child(1) { width: 64px; }
+  .rp-punch th:nth-child(3), .rp-punch th:nth-child(4), .rp-punch th:nth-child(5) { width: 62px; }
+  .rp-punch { font-size: 0.78rem; }
+}
