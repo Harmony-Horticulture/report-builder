@@ -244,3 +244,9 @@ td.num, th.num { text-align: right; }
   .preview-wrap { padding: 0; background: transparent; }
   .toolbar { position: static; }
 }
+
+/* Priority level picker under Next Steps / Priorities */
+.add-level { margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+.add-level label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.add-level .btn-row { flex-wrap: nowrap; align-items: center; }
+.add-level select { width: auto; min-width: 180px; margin: 0; }

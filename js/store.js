@@ -157,10 +157,10 @@
 
       // Clients
       async listClients() {
-        return fetchAll(() => sb.from("clients").select("id,name,properties,active").order("name"));
+        return fetchAll(() => sb.from("clients").select("*").order("name"));
       },
       async addClient({ name, properties }) {
-        return check(await sb.from("clients").insert({ name, properties }).select("id,name,properties,active").single());
+        return check(await sb.from("clients").insert({ name, properties }).select("*").single());
       },
 
       // Report types
@@ -302,13 +302,14 @@
 
     function seed() {
       const people = [
-        { id: "u-admin", email: "krista@example.com", full_name: "Krista", role: "admin", title: "Owner, Plant Health Consultant", credentials: "ISA Certified Arborist", phone: "", active: true },
+        { id: "u-admin", email: "krista@example.com", full_name: "Krista", role: "admin", title: "Plant Health Consultant", credentials: "ISA Certified Arborist", phone: "", active: true },
         { id: "u-kristen", email: "kristen@example.com", full_name: "Kristen Moore", role: "consultant", title: "Horticulture Consultant", credentials: "ISA Certified Arborist", phone: "", active: true },
         { id: "u-robbie", email: "robbie@example.com", full_name: "Robbie Stephens", role: "consultant", title: "", credentials: "", phone: "", active: true },
       ];
       const types = DEFAULT_TYPES.map((t) => ({ id: uid(), active: true, updated_at: new Date().toISOString(), ...JSON.parse(JSON.stringify(t)) }));
       return {
         people, invitations: [],
+        clientsV2: true,
         clients: (window.HH_DEMO_CLIENTS || []).slice(),
         types,
         settings: { ai_polish_enabled: false, dictation_terms: [{ heard: "acer palmer tum", write: "Acer palmatum" }, { heard: "drip zone", write: "drip zone" }] },
@@ -319,6 +320,20 @@
     let db;
     try { db = JSON.parse(localStorage.getItem(KEY)); } catch (e) { db = null; }
     if (!db) db = seed();
+    // Demo data saved before the customer list update: bring in the new
+    // customers and their contacts, and drop the old title
+    if (!db.clientsV2) {
+      const byName = new Map(db.clients.map((c) => [c.name.toLowerCase(), c]));
+      let next = Math.max(0, ...db.clients.map((c) => c.id)) + 1;
+      (window.HH_DEMO_CLIENTS || []).forEach((n) => {
+        const c = byName.get(n.name.toLowerCase());
+        if (c) Object.assign(c, { contact_name: c.contact_name || n.contact_name, contact_email: c.contact_email || n.contact_email });
+        else db.clients.push({ ...n, id: next++ });
+      });
+      const k = db.people.find((p) => p.id === "u-admin");
+      if (k && k.title === "Owner, Plant Health Consultant") k.title = "Plant Health Consultant";
+      db.clientsV2 = true;
+    }
     const save = () => {
       try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { console.warn("Demo data could not be saved", e); }
     };
@@ -398,7 +413,7 @@
       };
       db.reports.push({
         id: r2, user_id: "u-admin", type_id: t2.id, type_name: t2.name, sections: clone(t2.sections),
-        client_id: 9, client_name: "Aviano Community Association", property: "Aviano Community Association", community: "Aviano",
+        client_id: 13, client_name: "Aviano Community Association", property: "Aviano Community Association", community: "Aviano",
         contact_name: "Pat Rivera", contact_email: "board@example.com", report_date: daysAgo(3),
         consultant: cons(db.people[0]), content: content2, status: "draft", version: 1, share_token: null,
         sent_at: null, sent_to: null, created_at: new Date(Date.now() - 3 * 86400000).toISOString(), updated_at: new Date(Date.now() - 2 * 86400000).toISOString(),

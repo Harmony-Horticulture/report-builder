@@ -345,6 +345,7 @@
       <div class="toolbar">
         <div><span class="eyebrow">${esc(r.type_name)}</span> ${statusBadge(r.status)} <span id="savedState" class="saved-state">Saved</span></div>
         <div class="btn-row">
+          ${S.mode === "demo" || isAdmin() ? `<button class="secondary small" id="sampleBtn" type="button">Fill with sample data</button>` : ""}
           <button class="secondary small" id="delBtn" type="button">Delete draft</button>
           <button id="previewBtn" type="button">Preview</button>
         </div>
@@ -366,7 +367,7 @@
           <div class="field"><label for="hCommunity">HOA or community (optional)</label><input id="hCommunity" data-path="head:community" value="${esc(r.community)}"></div>
           <div class="field"><label for="hContact">Contact person</label><input id="hContact" data-path="head:contact_name" value="${esc(r.contact_name)}" placeholder="Used to greet them in the email"></div>
           <div class="field"><label for="hEmail">Contact email</label><input id="hEmail" type="email" data-path="head:contact_email" value="${esc(r.contact_email)}"></div>
-          <div class="field"><label>Consultant</label><input value="${esc([r.consultant.name, r.consultant.title].filter(Boolean).join(", "))}" disabled></div>
+          <div class="field"><label>Consultant</label><input value="${esc(r.consultant.name)}" disabled></div>
           <div class="field"><label for="hDate">Date</label><input id="hDate" type="date" data-path="head:report_date" value="${esc(r.report_date)}"></div>
         </div>
       </div>
@@ -415,7 +416,8 @@
     if (s.kind === "priorities") {
       for (const t of R.TIERS) {
         const items = (c.items || []).filter((i) => (i.tier || "p1") === t.key);
-        if (!items.length) continue;
+        // Priority 1, 2 and Future always show; Priority 3 to 5 once something is added there
+        if (!items.length && !["p1", "p2", "future"].includes(t.key)) continue;
         inner += `<div class="tier-label">${esc(t.label)} · ${esc(t.sub)}</div>`;
         inner += items.map((it, i) => `
           <div class="prio-row">
@@ -427,8 +429,13 @@
               <button type="button" data-remove data-sec="${esc(s.key)}" data-id="${esc(it.id)}" aria-label="Remove">✕</button>
             </div>
           </div>`).join("");
+        // Each priority level can hold as many items as needed
+        inner += `<div class="btn-row" style="margin:4px 0 14px"><button type="button" class="secondary small" data-addprio="${t.key}" data-sec="${esc(s.key)}">+ ${items.length ? "Add another" : `Add ${esc(t.label)}`}</button></div>`;
       }
-      inner += `<div class="btn-row" style="margin-top:8px">${R.TIERS.map((t) => `<button type="button" class="secondary small" data-addprio="${t.key}" data-sec="${esc(s.key)}">+ ${esc(t.label)}</button>`).join("")}</div>`;
+      // Any level, including Priority 3 to 5
+      inner += `<div class="add-level"><label for="lvl_${esc(s.key)}">Add to priority level</label>
+        <div class="btn-row"><select id="lvl_${esc(s.key)}" data-level-for="${esc(s.key)}">${R.TIERS.map((x) => `<option value="${x.key}">${esc(x.label)}</option>`).join("")}</select>
+        <button type="button" class="secondary small" data-addlevel data-sec="${esc(s.key)}">+ Add</button></div></div>`;
     }
     return `<div class="card sec-card" id="sec_${esc(s.key)}"><h2>${esc(s.title)}</h2>${s.help ? `<p class="sec-help">${esc(s.help)}</p>` : ""}${inner}</div>`;
   }
@@ -503,6 +510,13 @@
       const last = $$(`#sec_${CSS.escape(sec.key)} .item`).pop();
       if (last) last.scrollIntoView({ behavior: "smooth", block: "center" });
     }));
+    $$("[data-addlevel]").forEach((b) => (b.onclick = async () => {
+      const tier = $(`select[data-level-for="${CSS.escape(b.dataset.sec)}"]`).value;
+      sectionItems(b.dataset.sec).push({ id: uid(), tier, text: "" });
+      scheduleSave(); await redraw();
+      const ta = $(`textarea[data-path="item:${CSS.escape(b.dataset.sec)}:${CSS.escape(sectionItems(b.dataset.sec).slice(-1)[0].id)}:text"]`);
+      if (ta) { ta.focus(); ta.scrollIntoView({ block: "center" }); }
+    }));
     $$("[data-addprio]").forEach((b) => (b.onclick = async () => {
       sectionItems(b.dataset.sec).push({ id: uid(), tier: b.dataset.addprio, text: "" });
       scheduleSave(); await redraw();
@@ -569,11 +583,25 @@
       await flushSave();
       location.hash = "#/review/" + r.id;
     };
+    // Made-up content and photos for trying layouts and exports (demo mode and admins)
+    const sb = $("#sampleBtn");
+    if (sb) sb.onclick = async () => {
+      if ((hasAnyContent(r) || r.client_id) && !(await confirmBox("Fill with sample data?", "This replaces the client, notes, photos and priorities in this report with made-up sample content.", "Fill it in"))) return;
+      sb.disabled = true; sb.textContent = "Filling in…";
+      try {
+        const c = await HHSample.fill(r, state.clients, (blob) => S.uploadPhoto(r.id, blob), uid);
+        if (c) await pickClient(c.id); else { scheduleSave(); await redraw(); }
+        toast("Sample data added. Everything can still be edited.");
+      } catch (e) { fail(e); sb.disabled = false; sb.textContent = "Fill with sample data"; }
+    };
     $("#delBtn").onclick = async () => {
       if (!(await confirmBox("Delete this draft?", "The draft and its photos will be removed. This can't be undone.", "Delete", true))) return;
       try { clearTimeout(state.saveTimer); state.dirty = false; await S.deleteReport(r.id); state.report = null; toast("Draft deleted."); go("dashboard"); } catch (e) { fail(e); }
     };
   }
+
+  // QuickBooks can hold several addresses in one field; the report needs one
+  const firstEmail = (s) => (String(s || "").match(/[^\s,;<>]+@[^\s,;<>]+\.[^\s,;<>]+/) || [""])[0];
 
   async function pickClient(id) {
     const r = state.report;
@@ -581,16 +609,16 @@
     r.client_id = c.id;
     r.client_name = c.name;
     r.property = (c.properties && c.properties[0]) || c.name;
-    // Fill contact details from this client's last report
+    // Contact from the customer list, then this client's last report, then the client name.
+    // Both fields stay editable.
+    let prev = null;
     try {
-      const prev = (await S.listReports()).filter((x) => x.client_name === c.name && x.id !== r.id)[0];
-      if (prev) {
-        const full = await S.getReport(prev.id);
-        if (!r.contact_name) r.contact_name = full.contact_name || "";
-        if (!r.contact_email) r.contact_email = full.contact_email || "";
-        if (!r.community) r.community = full.community || "";
-      }
+      const last = (await S.listReports()).filter((x) => x.client_name === c.name && x.id !== r.id)[0];
+      if (last) prev = await S.getReport(last.id);
     } catch (e) { /* not important */ }
+    r.contact_name = c.contact_name || (prev && prev.contact_name) || c.name;
+    r.contact_email = firstEmail(c.contact_email) || (prev && prev.contact_email) || "";
+    if (!r.community && prev) r.community = prev.community || "";
     scheduleSave(); await redraw();
   }
 

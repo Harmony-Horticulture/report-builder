@@ -28,6 +28,9 @@ Skip this if the Time Tracker is already set up in Supabase.
 
 This adds the report tables, photo storage, security rules and the two report types. It doesn't change any Time Tracker data.
 
+3. Open another new query, paste all of [`supabase/02_client_contacts.sql`](../supabase/02_client_contacts.sql) and click **Run**. This adds a contact person, email and phone to the shared client list (the Time Tracker ignores them).
+4. Open another new query, paste all of **client-contacts.sql** from the project files (the `setup` folder) and click **Run**. It fills in the contact name and email for every customer from your QuickBooks customer list, so picking a client in a report fills them in. It isn't on GitHub because it has customer email addresses.
+
 ## 3. Put the app online (GitHub Pages)
 
 1. In this repository on GitHub, click **Settings > Pages**.

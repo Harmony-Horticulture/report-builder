@@ -73,7 +73,7 @@
       ["Property", r.property || r.client_name],
       ["Community", r.community],
       ["Contact", r.contact_name],
-      ["Consultant", [r.consultant && r.consultant.name, r.consultant && r.consultant.title].filter(Boolean).join(", ")],
+      ["Consultant", (r.consultant && r.consultant.name) || ""],
       ["Date", R.niceDate(r.report_date)],
     ].filter(([, v]) => v && String(v).trim());
   }
