@@ -6,7 +6,7 @@ This takes about 30 to 45 minutes, once. You don't need to write code. Until you
 |---|---|---|---|
 | Website | Shows the app at a web address | GitHub Pages (part of GitHub) | Free |
 | Database, sign-in and photos | Stores reports, photos, logins and invitations | Supabase | Free plan; Pro is $25/month if you outgrow it |
-| Email | Sends reports to clients, plus invitations and password resets | Resend | Free up to 3,000 emails/month |
+| Email | Sends reports to clients, plus invitations and password resets | Your Google Workspace mailbox (Gmail) | Included |
 | AI polish (optional, off by default) | Tidies wording | Anthropic (Claude) | Pay per use, usually a few cents per report |
 
 > **One login for both apps:** use the **same Supabase project as the Time Tracker**. Set up the Time Tracker first (its own SETUP.md), then follow the steps below and skip step 1.
@@ -50,16 +50,14 @@ Already done for Harmony Horticulture: [`js/config.js`](../js/config.js) has the
 1. In Supabase, go to **Authentication > URL Configuration**.
 2. Under **Redirect URLs**, click **Add URL** and add the address from step 3. (If the Time Tracker is the **Site URL**, leave that as it is. Both addresses just need to be on the list.)
 
-## 6. Email (Resend)
+## 6. Email (your Google Workspace mailbox)
 
-If you already did this for the Time Tracker, invitations and password resets already work. You only need step 6.3 onward for sending reports.
+Reports go out from `accounting@harmonyhorticulture.com`, the same mailbox and app password the Time Tracker uses for sign-in emails. Client replies go to the consultant who wrote the report.
 
-1. Sign up at [resend.com](https://resend.com), add the domain `harmonyhorticulture.com` and add the DNS records it shows you. Send me a screenshot if you'd like help.
-2. In Supabase, **Authentication > Emails > SMTP Settings**: turn on **Custom SMTP** with host `smtp.resend.com`, port `465`, username `resend`, your Resend API key as the password, and sender name `Harmony Horticulture`.
-3. In Supabase, open **Edge Functions > Secrets** and add:
-   - `RESEND_API_KEY`: your Resend API key
-   - `REPORTS_FROM`: `Harmony Horticulture <reports@harmonyhorticulture.com>`
-   - `APP_URL`: the web address from step 3
+1. In Supabase, open **Edge Functions > Secrets**, click **Add new secret**.
+2. Name: `GMAIL_APP_PASSWORD`. Value: the 16-letter Google app password (the same one you entered in Supabase's SMTP settings). Click **Save**.
+
+Type the password straight into Supabase. Don't paste it into chat or email.
 
 ## 7. Add the two helpers (Edge Functions)
 

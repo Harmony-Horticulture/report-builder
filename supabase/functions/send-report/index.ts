@@ -1,14 +1,19 @@
 // =====================================================================
-// send-report: emails a finished report to the client through Resend
-// (RC-26, RC-27). Runs on Supabase as an Edge Function.
+// send-report: emails a finished report to the client (RC-26, RC-27)
+// through Harmony Horticulture's Google Workspace mailbox (Gmail SMTP).
+// Runs on Supabase as an Edge Function.
 //
-// Secrets to set in Supabase (Edge Functions > Secrets):
-//   RESEND_API_KEY   your Resend API key
-//   REPORTS_FROM     e.g. Harmony Horticulture <reports@harmonyhorticulture.com>
-//   APP_URL          optional: your app's web address, e.g.
-//                    https://harmony-horticulture.github.io/report-builder/
+// Secret to set in Supabase (Edge Functions > Secrets):
+//   GMAIL_APP_PASSWORD   the 16-letter Google app password for the
+//                        sending mailbox (the same one used for
+//                        Supabase sign-in emails)
+// Optional:
+//   GMAIL_USER           sending mailbox (default accounting@harmonyhorticulture.com)
+//   APP_URL              the app's web address, e.g.
+//                        https://harmony-horticulture.github.io/report-builder/
 // =====================================================================
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
+import nodemailer from "npm:nodemailer@6.9.16";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -73,21 +78,21 @@ Deno.serve(async (req) => {
 
     const text = `${first ? `Hi ${first},` : "Hello,"}\n\nYour ${report.type_name} for ${property} is ready.\n\n${message ? message + "\n\n" : ""}View your report: ${link}\n\n${sig.join("\n")}\n\nHarmony Horticulture`;
 
+    const pass = (Deno.env.get("GMAIL_APP_PASSWORD") || "").replace(/\s+/g, "");
+    if (!pass) return json({ error: "Email isn't set up yet. Add the GMAIL_APP_PASSWORD secret in Supabase (see docs/SETUP.md)." }, 500);
+    const mailbox = Deno.env.get("GMAIL_USER") || "accounting@harmonyhorticulture.com";
     const replyTo = cons.email || user.email;
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${Deno.env.get("RESEND_API_KEY")}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: Deno.env.get("REPORTS_FROM") || "Harmony Horticulture <reports@harmonyhorticulture.com>",
-        to: [to],
-        reply_to: replyTo ? [replyTo] : undefined, // client replies go to the consultant
+    try {
+      const mailer = nodemailer.createTransport({ host: "smtp.gmail.com", port: 465, secure: true, auth: { user: mailbox, pass } });
+      await mailer.sendMail({
+        from: { name: "Harmony Horticulture", address: mailbox },
+        to,
+        replyTo: replyTo || undefined, // client replies go to the consultant
         subject, html, text,
-      }),
-    });
-    if (!res.ok) {
-      const detail = await res.text();
-      console.error("Resend error", res.status, detail);
-      return json({ error: "The email service didn't accept the message. Check the Resend settings in docs/SETUP.md." }, 502);
+      });
+    } catch (err) {
+      console.error("Gmail error", err);
+      return json({ error: "Gmail didn't accept the message. Check the GMAIL_APP_PASSWORD secret in Supabase (see docs/SETUP.md)." }, 502);
     }
 
     const now = new Date().toISOString();
