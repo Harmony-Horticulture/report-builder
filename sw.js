@@ -4,7 +4,7 @@
 // saved copy is only used when there is no connection.
 // Supabase (logins, reports, photos) is never stored here.
 // =====================================================================
-const CACHE = "hh-reports-v1";
+const CACHE = "hh-reports-v2";
 const SHELL = [
   "./", "index.html", "css/app.css", "css/report.css",
   "js/config.js", "js/demo-clients.js", "js/store.js", "js/render.js", "js/exports.js", "js/sample-data.js", "js/app.js",
@@ -27,7 +27,9 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
   if (req.method !== "GET" || url.origin !== self.location.origin) return;
   e.respondWith(
-    fetch(req)
+    // "no-cache" asks GitHub Pages whether the file changed, instead of
+    // using the browser's 10-minute copy, so updates show up right away
+    fetch(req, { cache: "no-cache" })
       .then((res) => {
         if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
         return res;
