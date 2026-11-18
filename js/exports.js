@@ -68,6 +68,18 @@
     return map;
   }
 
+  // The punch list overview map as an image (null if off, no pins or offline)
+  async function mapImage(items, saved) {
+    if (saved) { const size = await imageSize(saved); return { dataUrl: saved, w: size.w, h: size.h }; }
+    const m = R.overviewMap(items);
+    if (!m) return null;
+    try {
+      const res = await fetch(m.url);
+      if (!res.ok) return null;
+      return { ...m, dataUrl: await blobToDataUrl(await res.blob()) };
+    } catch (e) { return null; }
+  }
+
   function headerRows(r) {
     return [
       ["Property", r.property || r.client_name],
@@ -227,6 +239,18 @@
           ...(b.type === "li" ? { numbering: { reference: "hh-bullets", level: 0 } } : {}), children: b.runs.map((r) => t(r.text, { bold: r.bold || o.bold, size: o.size || 17, color: o.color })) }));
         const maxW = Math.floor((COLS[0] - 180) / PX), maxH = 90;
         children.push(new d.Paragraph({ style: "HHBody", children: [t(R.punchCounts(c.items), { size: 17, color: GRAY })] }));
+        const map = await mapImage(c.items, c.mapImage);
+        if (map) {
+          children.push(new d.Paragraph({ keepNext: true, spacing: { after: 40 }, children: [new d.ImageRun({ type: /^data:image\/png/.test(map.dataUrl) ? "png" : "jpg", data: dataUrlToBytes(map.dataUrl),
+            transformation: { width: Math.round(CONTENT_W / PX), height: Math.round((CONTENT_W / PX) * map.h / map.w) },
+            altText: { title: "Property map", description: "Map of the property with numbered pins for the punch list items", name: "Map" } })] }));
+          children.push(new d.Paragraph({ style: "HHBody", spacing: { after: 160 }, children: [
+            t("Pin numbers match the item numbers below. ", { size: 15, color: GRAY }),
+            t("● ", { size: 15, color: "E8644A" }), t("Open   ", { size: 15, color: GRAY }),
+            t("● ", { size: 15, color: "F3A33A" }), t("In progress   ", { size: 15, color: GRAY }),
+            t("● ", { size: 15, color: GREEN }), t("Complete", { size: 15, color: GRAY })] }));
+        }
+        const nums = R.numberPunch(c.items);
         for (const g of R.groupPunch(c.items)) {
           children.push(kicker(g.title));
           const head = new d.TableRow({ tableHeader: true, cantSplit: true, children: ["Photo", "Item", "Priority", "Assigned", "Status"].map((h, i) =>
@@ -236,6 +260,7 @@
           g.items.forEach((it) => {
             const p = it.photo ? photos.get(it.photo.id) : null;
             const body = [];
+            body.push(new d.Paragraph({ style: "HHBody", spacing: { after: 20 }, children: [t(`#${nums.get(it.id)}`, { size: 15, bold: true, color: PINK })] }));
             if (String(it.text || "").trim()) body.push(...smallRich(it.text, { size: 18, bold: true }));
             if (String(it.note || "").trim()) body.push(...smallRich(it.note, { color: GRAY }));
             const tags = R.punchTags(it);
@@ -499,6 +524,21 @@
         };
         const cellLines = (text, w) => { font("normal"); doc.setFontSize(SZ); return doc.splitTextToSize(String(text || ""), w - 2 * PAD); };
         font("normal"); doc.setFontSize(9); color(GRAY); doc.text(R.punchCounts(c.items), M, y + 8); y += 16;
+        const map = await mapImage(c.items, c.mapImage);
+        if (map) {
+          // Shrink the map to fit the rest of this page when that keeps it a useful size
+          let mh = CW * map.h / map.w;
+          if (y + mh + 20 > BOTTOM) { if (BOTTOM - y - 20 >= 170) mh = BOTTOM - y - 20; else newPage(); }
+          const mw = mh * map.w / map.h;
+          doc.addImage(map.dataUrl, /^data:image\/png/.test(map.dataUrl) ? "PNG" : "JPEG", M, y, mw, mh, undefined, "FAST");
+          y += mh + 4;
+          font("normal"); doc.setFontSize(7.5); color(GRAY);
+          let x = M;
+          const part = (txt, dot) => { if (dot) { fill(dot); doc.circle(x + 3, y + 5, 2.6, "F"); x += 8; } color(GRAY); doc.text(txt, x, y + 7.5); x += doc.getTextWidth(txt) + 8; };
+          part("Pin numbers match the item numbers below."); part("Open", "E8644A"); part("In progress", "F3A33A"); part("Complete", GREEN);
+          y += 18;
+        }
+        const nums = R.numberPunch(c.items);
         for (const g of R.groupPunch(c.items)) {
           ensure(70);
           font("bold"); doc.setFontSize(9); color(PINK); doc.text(g.title.toUpperCase(), M, y + 9, { charSpace: 0.4 }); y += 15;
@@ -514,17 +554,18 @@
             const tagLines = tags ? cellLines(tags, COLS[1]) : [];
             const assignedLines = cellLines(it.assigned, COLS[3]);
             const prioLines = cellLines(R.tierShort(it.tier), COLS[2]);
-            const map = R.mapUrl(it.loc);
-            const h = Math.max(size ? size.h + 2 * PAD : 0, taskH + noteH + (tagLines.length + (map ? 1 : 0)) * 10 + 2 * PAD - 2, assignedLines.length * LEAD + 2 * PAD, prioLines.length * LEAD + 2 * PAD, 24);
+            const link = R.mapUrl(it.loc);
+            const h = Math.max(size ? size.h + 2 * PAD : 0, 11 + taskH + noteH + (tagLines.length + (link ? 1 : 0)) * 10 + 2 * PAD - 2, assignedLines.length * LEAD + 2 * PAD, prioLines.length * LEAD + 2 * PAD, 24);
             if (y + h > BOTTOM) { newPage(); headRow(); }
             const top = y;
             fill(PANEL); COLS.forEach((w, i) => doc.rect(xs[i], top, w, h, "F"));
             if (p) doc.addImage(p.dataUrl, /^data:image\/png/.test(p.dataUrl) ? "PNG" : "JPEG", xs[0] + PAD, top + PAD, size.w, size.h, undefined, "FAST");
             y = top + PAD - 2;
+            font("bold"); doc.setFontSize(7.5); color(PINK); doc.text(`#${nums.get(it.id)}`, xs[1] + PAD, y + 7); y += 11;
             if (taskH) writeRich(task, xs[1] + PAD, tw, SZ + 0.5, LEAD);
             if (noteH) writeRich(it.note, xs[1] + PAD, tw, SZ, LEAD, GRAY);
             if (tagLines.length) { font("normal"); doc.setFontSize(7.5); color(BROWN); tagLines.forEach((l) => { doc.text(l, xs[1] + PAD, y + 7); y += 10; }); }
-            if (map) { font("semibold"); doc.setFontSize(7.5); color(GREEN); doc.textWithLink("View on map", xs[1] + PAD, y + 7, { url: map }); y += 10; }
+            if (link) { font("semibold"); doc.setFontSize(7.5); color(GREEN); doc.textWithLink("View on map", xs[1] + PAD, y + 7, { url: link }); y += 10; }
             const st = it.status || "open";
             font("normal"); doc.setFontSize(SZ); color(TEXT);
             prioLines.forEach((l, i) => doc.text(l, xs[2] + PAD, top + PAD + 7 + i * LEAD));
@@ -593,5 +634,5 @@
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
 
-  window.Exports = { loadPhotos, buildDocx, buildPdf, download, blobToDataUrl, fetchAsDataUrl };
+  window.Exports = { mapImage, loadPhotos, buildDocx, buildPdf, download, blobToDataUrl, fetchAsDataUrl };
 })();

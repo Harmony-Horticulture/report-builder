@@ -1142,6 +1142,10 @@
         const pdf = await X.buildPdf(r, photos);
         const snap = JSON.parse(JSON.stringify(r));
         delete snap.content._polish;
+        for (const s of snap.sections) if (s.kind === "punchlist" && snap.content[s.key]) {
+          const map = await X.mapImage(snap.content[s.key].items);
+          if (map) snap.content[s.key].mapImage = map.dataUrl;
+        }
         for (const s of snap.sections) for (const it of ((snap.content[s.key] || {}).items || [])) {
           if (it.photo && photos.get(it.photo.id)) it.photo = { id: it.photo.id, w: it.photo.w, h: it.photo.h, dataUrl: photos.get(it.photo.id).dataUrl };
         }
@@ -1256,6 +1260,12 @@
         <div class="btn-row" style="margin-top:10px"><button id="termsSave" type="button">Save word list</button></div>
       </div>
       <div class="card">
+        <h2>Punch list map</h2>
+        <p class="small muted">Shows a satellite map with numbered pins at the top of punch lists. Paste the Mapbox public token here (it starts with <b>pk.</b>, from account.mapbox.com). Leave it empty to turn the map off.</p>
+        <input id="mapToken" placeholder="pk.…" value="${esc(st.map_token || "")}" autocomplete="off" spellcheck="false">
+        <div class="btn-row" style="margin-top:10px"><button id="mapSave" type="button">Save map key</button></div>
+      </div>
+      <div class="card">
         <h2>Report types</h2>
         <p class="small muted">Changes apply to new reports only. Reports already started keep their sections.</p>
         <div id="typeList">${state.types.map((t) => `
@@ -1264,6 +1274,11 @@
       </div>`;
     $("#aiOn").onchange = async () => {
       try { await S.saveSettings({ ai_polish_enabled: $("#aiOn").checked }); state.settings.ai_polish_enabled = $("#aiOn").checked; toast($("#aiOn").checked ? "AI polish is on." : "AI polish is off."); } catch (e) { fail(e); }
+    };
+    $("#mapSave").onclick = async () => {
+      const v = $("#mapToken").value.trim();
+      if (v && !/^pk\.[A-Za-z0-9._-]{20,}$/.test(v)) { toast("That doesn't look like a Mapbox public token. It starts with pk.", true); return; }
+      try { await S.saveSettings({ map_token: v }); state.settings.map_token = v; R.setMapToken(v); toast(v ? "Map key saved. Punch lists now show the map." : "Map turned off."); } catch (e) { fail(e); }
     };
     $("#termsSave").onclick = async () => {
       const terms = $("#terms").value.split("\n").map((l) => l.split("=>").map((x) => x.trim())).filter((p) => p.length === 2 && p[0] && p[1]).map(([heard, write]) => ({ heard, write }));
@@ -1331,6 +1346,7 @@
       state.me = me;
       const [clients, types, settings] = await Promise.all([S.listClients(), S.listReportTypes(), S.getSettings()]);
       state.clients = clients; state.types = types; state.settings = settings;
+      R.setMapToken(settings.map_token);
       renderShell();
       onRoute();
     } catch (e) {

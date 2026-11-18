@@ -123,6 +123,39 @@
     return tags;
   }
 
+  // Punch list items in the order the report shows them, numbered 1, 2, 3...
+  // The numbers match the pins on the overview map.
+  function numberPunch(items) {
+    const nums = new Map();
+    let n = 0;
+    for (const g of groupPunch(items)) for (const it of g.items) nums.set(it.id, ++n);
+    return nums;
+  }
+  const PIN_COLORS = { open: "e8644a", progress: "f3a33a", done: "009344" };
+  // Satellite image with a numbered pin per item that has a location.
+  // Pins far from the rest (a wrong location) are left off so the map stays on the property.
+  // The map key is saved by an admin in Settings (Mapbox public token)
+  let mapToken = "";
+  const setMapToken = (t) => { mapToken = String(t || "").trim(); };
+  function overviewMap(items, w = 680, h = 360) {
+    const token = mapToken;
+    if (!token) return null;
+    const nums = numberPunch(items);
+    let pts = punchVisible(items).filter((i) => i.loc && isFinite(i.loc.lat) && isFinite(i.loc.lng)).map((i) => ({ n: nums.get(i.id), lat: +i.loc.lat, lng: +i.loc.lng, st: i.status || "open" }));
+    if (!pts.length) return null;
+    const med = (a) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+    const cLat = med(pts.map((p) => p.lat)), cLng = med(pts.map((p) => p.lng));
+    const meters = (p) => Math.hypot((p.lat - cLat) * 111320, (p.lng - cLng) * 111320 * Math.cos((cLat * Math.PI) / 180));
+    const near = pts.filter((p) => meters(p) <= 1500);
+    const left = pts.length - near.length;
+    pts = near.sort((a, b) => b.n - a.n); // lower numbers drawn last, on top
+    const fx = (x) => Number(x.toFixed(6));
+    const overlay = pts.filter((p) => p.n <= 99).map((p) => `pin-s-${p.n}+${PIN_COLORS[p.st] || PIN_COLORS.open}(${fx(p.lng)},${fx(p.lat)})`).join(",");
+    const view = pts.length === 1 ? `${fx(pts[0].lng)},${fx(pts[0].lat)},18` : "auto";
+    const url = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${overlay}/${view}/${w}x${h}@2x?padding=48&access_token=${encodeURIComponent(token)}`;
+    return { url, w, h, count: pts.length, left };
+  }
+
   // Link that opens an item's spot in the phone's or computer's map app
   const mapUrl = (loc) => (loc && isFinite(loc.lat) && isFinite(loc.lng) ? `https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}` : "");
 
@@ -167,13 +200,18 @@
       }
       if (sec.kind === "punchlist") {
         body += `<p class="rp-count">${esc(punchCounts(c.items))}</p>`;
+        // A sent report carries its map as a picture, so the client's link needs no map key
+        const map = c.mapImage ? { url: c.mapImage } : overviewMap(c.items);
+        if (map) body += `<figure class="rp-map-fig"><img src="${esc(map.url)}" alt="Map of the property with numbered pins for the punch list items" onerror="this.parentNode.style.display='none'">
+          <figcaption>Pin numbers match the item numbers below. <span class="pin-key"><i style="background:#e8644a"></i>Open <i style="background:#f3a33a"></i>In progress <i style="background:#009344"></i>Complete</span></figcaption></figure>`;
+        const nums = numberPunch(c.items);
         for (const g of groupPunch(c.items)) {
           body += `<h3 class="rp-h3">${esc(g.title)}</h3><table class="rp-table rp-punch"><thead><tr><th>Photo</th><th>Item</th><th>Priority</th><th>Assigned</th><th>Status</th></tr></thead><tbody>`;
           for (const it of g.items) {
             const url = it.photo ? photoUrl(it.photo) : "";
             const tags = punchTags(it);
             body += `<tr class="st-${esc(it.status || "open")}"><td class="rp-pphoto">${url ? `<img src="${esc(url)}" alt="">` : ""}</td>
-              <td>${String(it.text || "").trim() ? `<div class="rp-rich rp-task">${richHtml(it.text)}</div>` : ""}${String(it.note || "").trim() ? `<div class="rp-rich rp-pnote">${richHtml(it.note)}</div>` : ""}${tags.map((x) => `<span class="rp-tag">${esc(x)}</span>`).join("")}${mapUrl(it.loc) ? `<a class="rp-tag rp-map" href="${esc(mapUrl(it.loc))}" target="_blank" rel="noopener">📍 View on map</a>` : ""}</td>
+              <td><span class="rp-num">${nums.get(it.id)}</span>${String(it.text || "").trim() ? `<div class="rp-rich rp-task">${richHtml(it.text)}</div>` : ""}${String(it.note || "").trim() ? `<div class="rp-rich rp-pnote">${richHtml(it.note)}</div>` : ""}${tags.map((x) => `<span class="rp-tag">${esc(x)}</span>`).join("")}${mapUrl(it.loc) ? `<a class="rp-tag rp-map" href="${esc(mapUrl(it.loc))}" target="_blank" rel="noopener">📍 View on map</a>` : ""}</td>
               <td>${esc(tierShort(it.tier))}</td><td>${esc(it.assigned || "")}</td><td class="rp-status">${esc(statusLabel(it.status))}</td></tr>`;
           }
           body += `</tbody></table>`;
@@ -208,5 +246,5 @@
       </article>`;
   }
 
-  window.Report = { TIERS, esc, parseRich, richHtml, plain, niceDate, fileBase, sectionHasContent, groupPriorities, signatureLines, reportHtml, STATUSES, statusLabel, tierShort, shortDate, groupPunch, punchCounts, punchTags, punchVisible, mapUrl };
+  window.Report = { TIERS, esc, parseRich, richHtml, plain, niceDate, fileBase, sectionHasContent, groupPriorities, signatureLines, reportHtml, STATUSES, statusLabel, tierShort, shortDate, groupPunch, punchCounts, punchTags, punchVisible, mapUrl, numberPunch, overviewMap, setMapToken };
 })();
