@@ -284,3 +284,6 @@ td.num, th.num { text-align: right; }
   .punch-body { grid-template-columns: 1fr; }
   .punch-grid { grid-template-columns: 1fr 1fr; }
 }
+.loc-row { font-size: 0.8rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 6px; margin-top: 4px; }
+.loc-row a { color: var(--green); font-weight: 600; }
+.loc-row button { margin: 0; }

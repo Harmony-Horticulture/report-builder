@@ -140,7 +140,9 @@
         let i = 0;
         for (const o of shuffle(PUNCH).slice(0, 10)) {
           items.push({ id: uid(), photo: i % 3 === 2 ? null : await addPhoto(o.text.split(" ").slice(0, 3).join(" ")), date: dates[i < 5 ? 0 : 1], text: o.text, note: o.note || "",
-            tier: pick(tiers), assigned: pick(TEAM), status: pick(statuses), approval: Math.random() < 0.2 ? "yes" : "no", carried: "" });
+            tier: pick(tiers), assigned: pick(TEAM), status: pick(statuses), approval: Math.random() < 0.2 ? "yes" : "no", carried: "",
+            // Made-up spots around one estate so map links have something to show
+            loc: i % 4 === 3 ? undefined : { lat: Math.round((33.5402 + (Math.random() - 0.5) * 0.0016) * 1e6) / 1e6, lng: Math.round((-111.9561 + (Math.random() - 0.5) * 0.0020) * 1e6) / 1e6, acc: 6 + Math.floor(Math.random() * 10), src: "device" } });
           i++;
         }
         report.content[s.key] = { items, newDate: d0 };

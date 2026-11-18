@@ -7,7 +7,7 @@
 const CACHE = "hh-reports-v2";
 const SHELL = [
   "./", "index.html", "css/app.css", "css/report.css",
-  "js/config.js", "js/demo-clients.js", "js/store.js", "js/render.js", "js/exports.js", "js/sample-data.js", "js/app.js",
+  "js/config.js", "js/demo-clients.js", "js/store.js", "js/render.js", "js/exports.js", "js/sample-data.js", "js/geo.js", "js/app.js",
   "vendor/supabase.min.js", "assets/logo.png", "assets/logo-reversed.png", "assets/mark.png", "assets/mark-reversed.png",
   "assets/icon-192.png", "manifest.webmanifest",
 ];
