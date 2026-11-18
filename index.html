@@ -83,7 +83,14 @@
   <script src="js/app.js"></script>
   <script>
     // Phone app: lets people use "Add to Home Screen"
-    if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+      // When an update arrives, reload once so the newest version is used
+      var hadWorker = !!navigator.serviceWorker.controller, reloaded = false;
+      navigator.serviceWorker.addEventListener("controllerchange", function () {
+        if (hadWorker && !reloaded) { reloaded = true; location.reload(); }
+      });
+    }
   </script>
 </body>
 </html>
