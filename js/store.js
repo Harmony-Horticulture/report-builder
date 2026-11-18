@@ -15,7 +15,7 @@
   const pad = (n) => String(n).padStart(2, "0");
   const isoDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-  // The two report types we know about (the third is still to come).
+  // The report types we start with (admins can change them in Settings).
   const DEFAULT_TYPES = [
     {
       name: "Monthly Property Care Report",
@@ -36,6 +36,16 @@
         { key: "summary", title: "Visit Summary", kind: "notes", help: "Optional: one or two sentences about the visit." },
         { key: "photos", title: "Site Photos", kind: "photos", help: "Add a photo and a short note for each thing you want to show." },
         { key: "next", title: "Next Steps", kind: "priorities", help: "Optional: what should happen next." },
+      ],
+    },
+    {
+      name: "Punch List",
+      description: "Estate punch list: a compact table of tasks with photo, priority, who it's assigned to and status, by inspection date. Can start from last month's open items.",
+      sort_order: 3,
+      sections: [
+        { key: "summary", title: "Visit Summary", kind: "notes", help: "Optional: a few sentences about this month's inspections." },
+        { key: "punch", title: "Punch List", kind: "punchlist", help: "One line per task. Tap an item to edit it." },
+        { key: "followup", title: "Follow-up", kind: "notes", help: "Optional: next inspection and anything the client needs to approve." },
       ],
     },
   ];

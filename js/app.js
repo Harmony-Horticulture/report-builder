@@ -14,6 +14,7 @@
   const state = {
     me: null, clients: [], types: [], settings: { ai_polish_enabled: false, dictation_terms: [] },
     people: [], report: null, saveTimer: null, saving: null, dirty: false, filters: {},
+    punchOpen: new Set(), punchHideDone: false,
   };
   const isAdmin = () => state.me && state.me.role === "admin";
 
@@ -307,6 +308,7 @@
     const p = path.split(":");
     if (p[0] === "head") return r[p[1]] || "";
     if (p[0] === "sec") return (r.content[p[1]] || {}).text || "";
+    if (p[0] === "secf") return (r.content[p[1]] || {})[p[2]] || "";
     if (p[0] === "item") { const it = ((r.content[p[1]] || {}).items || []).find((i) => i.id === p[2]); return it ? it[p[3]] || "" : ""; }
     return "";
   }
@@ -314,6 +316,7 @@
     const p = path.split(":");
     if (p[0] === "head") r[p[1]] = value;
     if (p[0] === "sec") { r.content[p[1]] = r.content[p[1]] || {}; r.content[p[1]].text = value; }
+    if (p[0] === "secf") { r.content[p[1]] = r.content[p[1]] || {}; r.content[p[1]][p[2]] = value; }
     if (p[0] === "item") { const it = r.content[p[1]].items.find((i) => i.id === p[2]); if (it) it[p[3]] = value; }
   }
 
@@ -418,6 +421,7 @@
              <label class="btn secondary" style="margin:0">Add several from library<input type="file" accept="image/*" multiple data-multi data-sec="${esc(s.key)}" style="display:none"></label></div>`
         : `<button type="button" data-add data-sec="${esc(s.key)}">+ Add Observation</button>`;
     }
+    if (s.kind === "punchlist") inner = punchEditor(s, c, urls);
     if (s.kind === "priorities") {
       for (const t of R.TIERS) {
         const items = (c.items || []).filter((i) => (i.tier || "p1") === t.key);
@@ -443,6 +447,127 @@
         <button type="button" class="secondary small" data-addlevel data-sec="${esc(s.key)}">+ Add</button></div></div>`;
     }
     return `<div class="card sec-card" id="sec_${esc(s.key)}"><h2>${esc(s.title)}</h2>${s.help ? `<p class="sec-help">${esc(s.help)}</p>` : ""}${inner}</div>`;
+  }
+
+  // Punch list (estate inspections): one compact row per task, tap to edit.
+  // Items are grouped by inspection date; open items can come over from last month.
+  const firstLine = (t) => String(t || "").split("\n").map((l) => l.replace(/^\s*[-•*]\s+/, "").replace(/\*\*/g, "").trim()).find(Boolean) || "";
+  const newPunchItem = (date) => ({ id: uid(), photo: null, date, text: "", note: "", tier: "", assigned: "", status: "open", approval: "no", carried: "" });
+  function punchEditor(s, c, urls) {
+    const r = state.report;
+    const items = c.items || [];
+    const k = esc(s.key);
+    const hide = state.punchHideDone;
+    const names = [...new Set(items.map((i) => String(i.assigned || "").trim()).filter(Boolean))].sort();
+    const groups = [];
+    for (const it of items) {
+      let g = groups.find((x) => x.date === (it.date || ""));
+      if (!g) groups.push((g = { date: it.date || "", items: [] }));
+      g.items.push(it);
+    }
+    groups.sort((a, b) => (a.date ? (b.date ? a.date.localeCompare(b.date) : -1) : 1));
+    const opt = (list, v) => list.map(([val, l]) => `<option value="${esc(val)}" ${val === (v || "") ? "selected" : ""}>${esc(l)}</option>`).join("");
+    const TIER_OPTS = [["", "No priority"], ...R.TIERS.map((t) => [t.key, t.label])];
+    const STATUS_OPTS = R.STATUSES.map((x) => [x.key, x.label]);
+    const done = items.filter((i) => i.status === "done").length;
+
+    let html = `<div class="punch-tools">
+        <div class="field"><label for="pdate_${k}">Inspection date for new items</label><input id="pdate_${k}" type="date" data-path="secf:${k}:newDate" value="${esc(c.newDate || r.report_date)}"></div>
+        <div class="btn-row">
+          <button type="button" class="secondary small" data-carry data-sec="${k}">Bring over open items from last punch list</button>
+          ${done ? `<button type="button" class="ghost small" data-hidedone>${hide ? `Show ${done} complete` : `Hide ${done} complete`}</button>` : ""}
+        </div>
+        ${items.length ? `<p class="small muted" style="margin:6px 0 0">${esc(R.punchCounts(items))}</p>` : ""}
+      </div>`;
+    for (const g of groups) {
+      const shown = g.items.filter((it) => !(hide && it.status === "done"));
+      html += `<div class="tier-label">${esc(g.date ? `Inspection ${R.niceDate(g.date)}` : "No inspection date")} · ${g.items.length} item${g.items.length === 1 ? "" : "s"}</div>`;
+      html += shown.map((it) => {
+        const i = g.items.indexOf(it);
+        const id = esc(it.id);
+        const st = it.status || "open";
+        return `<details class="punch-item st-${esc(st)}" data-pid="${id}" ${state.punchOpen.has(it.id) ? "open" : ""}>
+          <summary>
+            <span class="ps-thumb">${it.photo ? `<img src="${esc(urls[it.photo.id] || "")}" alt="">` : ""}</span>
+            <span class="ps-main"><span class="ps-text">${esc(firstLine(it.text) || "New item")}</span>
+              <span class="ps-meta">${esc([R.tierShort(it.tier), it.assigned, it.approval === "yes" ? "Approval needed" : "", it.carried ? `From ${R.shortDate(it.carried)}` : ""].filter(Boolean).join(" · "))}</span></span>
+            <button type="button" class="ps-status" data-cycle data-sec="${k}" data-id="${id}" title="Tap to change status">${esc(R.statusLabel(st))}</button>
+          </summary>
+          <div class="punch-body">
+            <div class="photo-box small-box">
+              ${it.photo ? `<img src="${esc(urls[it.photo.id] || "")}" alt="">` : `<span class="small muted">Photo (optional)</span>`}
+              <div class="btn-row">
+                ${useWebcam()
+                  ? `<button type="button" data-webcam data-sec="${k}" data-id="${id}">${it.photo ? "Retake" : "Camera"}</button>`
+                  : `<label class="btn"><input type="file" accept="image/*" capture="environment" data-photo data-sec="${k}" data-id="${id}">${it.photo ? "Retake" : "Camera"}</label>`}
+                <label class="btn secondary"><input type="file" accept="image/*" data-photo data-sec="${k}" data-id="${id}">${useWebcam() ? "Upload photo" : "Library"}</label>
+              </div>
+              ${it.photo ? `<button type="button" class="ghost small" data-nophoto data-sec="${k}" data-id="${id}">No photo</button>` : ""}
+            </div>
+            <div>
+              ${textArea(`item:${s.key}:${it.id}:text`, it.text, { placeholder: "What needs to be done", rows: 2, label: "Task" })}
+              ${textArea(`item:${s.key}:${it.id}:note`, it.note, { placeholder: "Optional notes", rows: 2, label: "Notes", fmt: false })}
+              <div class="punch-grid">
+                <div class="field"><label>Priority</label><select data-path="item:${k}:${id}:tier" data-redraw>${opt(TIER_OPTS, it.tier)}</select></div>
+                <div class="field"><label>Status</label><select data-path="item:${k}:${id}:status" data-redraw>${opt(STATUS_OPTS, st)}</select></div>
+                <div class="field"><label>Assigned to</label><input data-path="item:${k}:${id}:assigned" data-redraw value="${esc(it.assigned || "")}" list="pnames_${k}" placeholder="Name or team"></div>
+                <div class="field"><label>Approval</label><select data-path="item:${k}:${id}:approval" data-redraw>${opt([["no", "Not needed"], ["yes", "Needed"]], it.approval || "no")}</select></div>
+                <div class="field"><label>Inspection date</label><input type="date" data-path="item:${k}:${id}:date" data-redraw value="${esc(it.date || "")}"></div>
+              </div>
+              <div class="item-tools" style="justify-content:flex-end">
+                <button type="button" data-move="-1" data-bydate data-sec="${k}" data-id="${id}" ${i === 0 ? "disabled" : ""} aria-label="Move up">↑</button>
+                <button type="button" data-move="1" data-bydate data-sec="${k}" data-id="${id}" ${i === g.items.length - 1 ? "disabled" : ""} aria-label="Move down">↓</button>
+                <button type="button" data-remove data-sec="${k}" data-id="${id}" aria-label="Remove">✕</button>
+              </div>
+            </div>
+          </div>
+        </details>`;
+      }).join("");
+    }
+    html += `<datalist id="pnames_${k}">${names.map((n) => `<option value="${esc(n)}">`).join("")}</datalist>`;
+    html += `<div class="btn-row" style="margin-top:12px"><button type="button" data-addpunch data-sec="${k}">+ Add item</button>
+      <label class="btn secondary" style="margin:0">Add several photos<input type="file" accept="image/*" multiple data-multi data-sec="${k}" style="display:none"></label></div>`;
+    return html;
+  }
+
+  // Copy the open (not complete) items from this client's last punch list.
+  // Photos are copied into this report so each report keeps its own.
+  async function carryOver(secKey) {
+    const r = state.report;
+    if (!r.client_name) { toast("Pick the client first.", true); return; }
+    const list = (await S.listReports())
+      .filter((x) => x.id !== r.id && x.client_name === r.client_name && x.type_name === r.type_name)
+      .sort((a, b) => ((b.report_date || "") + b.updated_at).localeCompare((a.report_date || "") + a.updated_at));
+    const earlier = list.filter((x) => !r.report_date || (x.report_date || "") <= r.report_date);
+    const last = earlier[0] || list[0];
+    if (!last) { toast(`No earlier ${r.type_name} for ${r.client_name} yet.`, true); return; }
+    const prev = await S.getReport(last.id);
+    const mine = sectionItems(secKey);
+    const have = new Set(mine.map((i) => i.from).filter(Boolean));
+    const open = [];
+    for (const sec of prev.sections || []) {
+      if (sec.kind !== "punchlist") continue;
+      for (const it of ((prev.content || {})[sec.key] || {}).items || []) {
+        if (it.status === "done" || !(it.photo || String(it.text || it.note || "").trim())) continue;
+        if (have.has(it.from || it.id)) continue;
+        open.push(it);
+      }
+    }
+    if (!open.length) { toast(`Everything on the ${R.niceDate(prev.report_date)} punch list is complete or already here.`); return; }
+    if (!(await confirmBox("Bring over open items?", `${open.length} item${open.length === 1 ? " is" : "s are"} still open or in progress on the ${R.niceDate(prev.report_date)} punch list. They'll be added here with their photos, priority, assigned to and status, marked as carried over.`, "Bring them over"))) return;
+    toast(`Bringing over ${open.length} item${open.length === 1 ? "" : "s"}…`);
+    for (const it of open) {
+      let photo = null;
+      if (it.photo) {
+        try {
+          const url = await S.photoUrl(it.photo);
+          if (url) photo = { ...(await S.uploadPhoto(r.id, await (await fetch(url)).blob())), w: it.photo.w, h: it.photo.h };
+        } catch (e) { /* keep the item without its photo */ }
+      }
+      mine.push({ ...newPunchItem(it.date || prev.report_date), ...it, id: uid(), photo, from: it.from || it.id, carried: it.carried || it.date || prev.report_date });
+    }
+    scheduleSave(); await redraw();
+    toast(`Brought over ${open.length} open item${open.length === 1 ? "" : "s"}.`);
   }
 
   function sectionItems(key) { return state.report.content[key].items; }
@@ -479,7 +604,35 @@
     $$("[data-path]").forEach((el) => {
       el.oninput = el.onchange = () => { setPath(r, el.dataset.path, el.value); scheduleSave(); };
       if (el.tagName === "TEXTAREA") el.onkeydown = bulletEnter;
+      // Punch list: the collapsed row follows the task text; other fields redraw when done
+      const pi = el.closest(".punch-item");
+      if (pi && /:text$/.test(el.dataset.path)) el.oninput = () => { setPath(r, el.dataset.path, el.value); scheduleSave(); $(".ps-text", pi).textContent = firstLine(el.value) || "New item"; };
+      if (el.dataset.redraw !== undefined) el.onchange = async () => { setPath(r, el.dataset.path, el.value); scheduleSave(); await redraw(); };
     });
+    $$(".punch-item").forEach((d) => (d.ontoggle = () => { if (d.open) state.punchOpen.add(d.dataset.pid); else state.punchOpen.delete(d.dataset.pid); }));
+    $$("[data-cycle]").forEach((b) => (b.onclick = async (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const it = sectionItems(b.dataset.sec).find((x) => x.id === b.dataset.id);
+      const order = R.STATUSES.map((x) => x.key);
+      it.status = order[(order.indexOf(it.status || "open") + 1) % order.length];
+      scheduleSave(); await redraw();
+    }));
+    $$("[data-addpunch]").forEach((b) => (b.onclick = async () => {
+      const c = r.content[b.dataset.sec];
+      const it = newPunchItem(c.newDate || r.report_date);
+      c.items.push(it);
+      state.punchOpen.add(it.id);
+      scheduleSave(); await redraw();
+      const ta = $(`textarea[data-path="item:${CSS.escape(b.dataset.sec)}:${CSS.escape(it.id)}:text"]`);
+      if (ta) { ta.focus(); ta.scrollIntoView({ block: "center" }); }
+    }));
+    $$("[data-carry]").forEach((b) => (b.onclick = async () => {
+      b.disabled = true;
+      try { await carryOver(b.dataset.sec); } catch (e) { fail(e); }
+      b.disabled = false;
+    }));
+    const hd = $("[data-hidedone]");
+    if (hd) hd.onclick = async () => { state.punchHideDone = !state.punchHideDone; await redraw(); };
     const tsel = $("#typeSel");
     if (tsel) tsel.onchange = async () => {
       const t = state.types.find((x) => x.id === tsel.value);
@@ -567,9 +720,10 @@
       const i = items.findIndex((x) => x.id === b.dataset.id);
       const dir = Number(b.dataset.move);
       let j = i + dir;
-      if (b.dataset.tiered !== undefined) {
-        const tier = items[i].tier;
-        while (j >= 0 && j < items.length && items[j].tier !== tier) j += dir;
+      const same = b.dataset.tiered !== undefined ? "tier" : b.dataset.bydate !== undefined ? "date" : null;
+      if (same) {
+        const v = items[i][same];
+        while (j >= 0 && j < items.length && items[j][same] !== v) j += dir;
       }
       if (j < 0 || j >= items.length) return;
       [items[i], items[j]] = [items[j], items[i]];
@@ -607,7 +761,9 @@
       if (!files.length) return;
       try {
         toast(`Adding ${files.length} photo${files.length > 1 ? "s" : ""}…`);
-        for (const f of files) sectionItems(inp.dataset.sec).push({ id: uid(), photo: await addPhoto(f), note: "" });
+        const sec = r.sections.find((x) => x.key === inp.dataset.sec);
+        const c = r.content[sec.key];
+        for (const f of files) sectionItems(sec.key).push(sec.kind === "punchlist" ? { ...newPunchItem(c.newDate || r.report_date), photo: await addPhoto(f) } : { id: uid(), photo: await addPhoto(f), note: "" });
         scheduleSave(); await redraw();
         toast("Photos added.");
       } catch (e) { fail(e); }
@@ -618,6 +774,7 @@
     }));
     // Dictation (RC-17)
     $$("[data-mic]").forEach((b) => (b.onclick = () => toggleDictation(b)));
+    if (dict) markMic(dict.path, true);
 
     $("#previewBtn").onclick = $("#previewBtn2").onclick = async () => {
       if (!r.client_id && !r.client_name && !r.property) { toast("Pick the client first.", true); return; }
@@ -721,7 +878,19 @@
   }
 
   // --- Dictation (RC-17, RC-18) ----------------------------------------
-  let rec = null, recBtn = null;
+  // One dictation at a time. "dict" is the running one; events from an older
+  // one are ignored, so a session that never reports its end (iPhone Safari
+  // does this) can't block the microphone for the next field.
+  let dict = null;
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  function markMic(path, on) {
+    $$("[data-mic]").forEach((b) => b.classList.toggle("listening", !!on && b.dataset.mic === path));
+  }
+  function endDictation(d) {
+    if (!d) return;
+    if (dict === d) { dict = null; markMic(null, false); }
+    try { d.rec.onresult = d.rec.onerror = d.rec.onend = null; d.rec.abort(); } catch (e) { /* already ended */ }
+  }
   function applyTerms(text) {
     let out = text;
     for (const t of state.settings.dictation_terms || []) {
@@ -731,25 +900,58 @@
     return out;
   }
   function toggleDictation(btn) {
-    if (rec) { rec.stop(); return; }
+    const path = btn.dataset.mic;
+    if (dict) {
+      const d = dict;
+      if (d.path === path) {
+        // Stop: keep what was just said, then make sure it is really finished
+        dict = null; markMic(null, false);
+        try { d.rec.stop(); } catch (e) { /* ended */ }
+        setTimeout(() => endDictation(d), 2000);
+        return;
+      }
+      // A different box: drop the old one and start here right away
+      endDictation(d);
+    }
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { toast("Dictation isn't available in this browser. Use Chrome or Safari, or the microphone on your phone's keyboard.", true); return; }
     if (!navigator.onLine) { toast("Dictation needs an internet connection on this device. You can still use your keyboard's microphone.", true); return; }
-    const ta = $(`textarea[data-path="${CSS.escape(btn.dataset.mic)}"]`);
-    rec = new SR();
-    rec.lang = "en-US"; rec.continuous = true; rec.interimResults = false;
-    recBtn = btn; btn.classList.add("listening");
+    const rec = new SR();
+    const d = { rec, path };
+    rec.lang = "en-US";
+    // iPhone Safari is unreliable with continuous listening: one phrase per tap there
+    rec.continuous = !isIOS;
+    rec.interimResults = false;
     rec.onresult = (ev) => {
       let said = "";
-      for (let i = ev.resultIndex; i < ev.results.length; i++) if (ev.results[i].isFinal) said += ev.results[i][0].transcript;
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        if (!ev.results[i].isFinal) continue;
+        said += ev.results[i][0].transcript;
+      }
       said = applyTerms(said.trim());
       if (!said) return;
-      ta.value = ta.value + (ta.value && !/\s$/.test(ta.value) ? " " : "") + said;
-      ta.dispatchEvent(new Event("input"));
+      // Find the box again each time: the screen may have been redrawn
+      const ta = $(`textarea[data-path="${CSS.escape(path)}"]`);
+      const cur = ta ? ta.value : (state.report ? getPath(state.report, path) : "");
+      const next = cur + (cur && !/\s$/.test(cur) ? " " : "") + said;
+      if (ta) { ta.value = next; ta.dispatchEvent(new Event("input")); }
+      else if (state.report) { setPath(state.report, path, next); scheduleSave(); }
     };
-    rec.onerror = (e) => { if (e.error === "not-allowed") toast("Allow microphone access to dictate.", true); else if (e.error === "network") toast("Dictation needs an internet connection.", true); };
-    rec.onend = () => { if (recBtn) recBtn.classList.remove("listening"); rec = null; recBtn = null; };
-    try { rec.start(); toast("Listening… tap the microphone again to stop."); } catch (e) { rec = null; btn.classList.remove("listening"); }
+    rec.onerror = (e) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") toast("Allow microphone access to dictate.", true);
+      else if (e.error === "network") toast("Dictation needs an internet connection.", true);
+      else if (e.error === "audio-capture") toast("No microphone found.", true);
+    };
+    rec.onend = () => { if (dict === d) { dict = null; markMic(null, false); } };
+    dict = d;
+    markMic(path, true);
+    try {
+      rec.start();
+      toast(isIOS ? "Listening… say one phrase. Tap the microphone again for the next one." : "Listening… tap the microphone again to stop.");
+    } catch (e) {
+      endDictation(d);
+      toast("Couldn't start the microphone. Try again in a moment.", true);
+    }
   }
 
   // =====================================================================
@@ -814,7 +1016,7 @@
       if (s.kind === "notes" && String(c.text || "").trim()) out.push({ id: `sec:${s.key}:text`, section: s.title, label: s.title, text: c.text });
       for (const [n, it] of (c.items || []).entries()) {
         for (const f of ["text", "recommendation", "note"]) {
-          if (String(it[f] || "").trim()) out.push({ id: `item:${s.key}:${it.id}:${f}`, section: s.title, label: `${s.title} ${n + 1} · ${f === "text" ? (s.kind === "priorities" ? "Priority" : "Observation") : f[0].toUpperCase() + f.slice(1)}`, text: it[f] });
+          if (String(it[f] || "").trim()) out.push({ id: `item:${s.key}:${it.id}:${f}`, section: s.title, label: `${s.title} ${n + 1} · ${f === "text" ? (s.kind === "priorities" ? "Priority" : s.kind === "punchlist" ? "Task" : "Observation") : f[0].toUpperCase() + f.slice(1)}`, text: it[f] });
         }
       }
     }
@@ -1038,7 +1240,7 @@
 
   function editType(t) {
     t = JSON.parse(JSON.stringify(t));
-    const KINDS = [["notes", "Notes"], ["observations", "Observations (photo + recommendation)"], ["photos", "Photos with notes"], ["priorities", "Priorities (3 tiers)"]];
+    const KINDS = [["notes", "Notes"], ["observations", "Observations (photo + recommendation)"], ["photos", "Photos with notes"], ["priorities", "Priorities (3 tiers)"], ["punchlist", "Punch list (compact table: photo, task, priority, assigned to, status)"]];
     const { m, close } = modal(`<div id="te"></div>`, { wide: true });
     const draw = () => {
       $("#te", m).innerHTML = `
@@ -1071,7 +1273,6 @@
         t.sections = t.sections.filter((s) => s.title.trim());
         if (!t.name) { $("#tErr", m).textContent = "Give the report type a name."; return; }
         if (!t.sections.length) { $("#tErr", m).textContent = "Add at least one section."; return; }
-        const used = new Set();
         t.sections.forEach((s) => {
           let k = s.key || s.title.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "section";
           while (used.has(k)) k += "_2";

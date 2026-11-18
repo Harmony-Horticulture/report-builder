@@ -79,6 +79,50 @@
     return TIERS.map((t) => ({ ...t, items: (items || []).filter((i) => (i.tier || "p1") === t.key && String(i.text || "").trim()) })).filter((g) => g.items.length);
   }
 
+  // Punch list: status, short date, groups by inspection date and a count line
+  const STATUSES = [
+    { key: "open", label: "Open" },
+    { key: "progress", label: "In progress" },
+    { key: "done", label: "Complete" },
+  ];
+  const statusLabel = (k) => (STATUSES.find((x) => x.key === k) || STATUSES[0]).label;
+  const tierShort = (k) => { const t = TIERS.find((x) => x.key === k); return t ? t.label : ""; };
+  function shortDate(iso) {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-").map(Number);
+    return `${m}/${d}/${String(y).slice(-2)}`;
+  }
+  const punchVisible = (items) => (items || []).filter((i) => i.photo || String(i.text || i.note || "").trim());
+  function groupPunch(items) {
+    const groups = [];
+    for (const it of punchVisible(items)) {
+      const key = it.date || "";
+      let g = groups.find((x) => x.date === key);
+      if (!g) groups.push((g = { date: key, items: [] }));
+      g.items.push(it);
+    }
+    groups.sort((a, b) => (a.date ? (b.date ? a.date.localeCompare(b.date) : -1) : 1));
+    for (const g of groups) {
+      g.carried = g.items.every((i) => i.carried);
+      g.title = (g.date ? `Inspection ${niceDate(g.date)}` : "Inspection date not set") + (g.carried ? " (carried over)" : "");
+    }
+    return groups;
+  }
+  function punchCounts(items) {
+    const v = punchVisible(items);
+    const n = (k) => v.filter((i) => (i.status || "open") === k).length;
+    const parts = [`${v.length} item${v.length === 1 ? "" : "s"}`];
+    for (const s of STATUSES) if (n(s.key)) parts.push(`${n(s.key)} ${s.label.toLowerCase()}`);
+    return parts.join(" · ");
+  }
+  // The small notes under a punch item's task (approval, carried over)
+  function punchTags(it) {
+    const tags = [];
+    if (it.approval === "yes") tags.push("Approval needed");
+    if (it.carried) tags.push(`Carried over from ${shortDate(it.carried)}`);
+    return tags;
+  }
+
   function signatureLines(cons) {
     cons = cons || {};
     return [cons.name, cons.title, cons.credentials, cons.email, cons.phone].filter((x) => x && String(x).trim());
@@ -118,6 +162,20 @@
           body += `</div></div>`;
         }
       }
+      if (sec.kind === "punchlist") {
+        body += `<p class="rp-count">${esc(punchCounts(c.items))}</p>`;
+        for (const g of groupPunch(c.items)) {
+          body += `<h3 class="rp-h3">${esc(g.title)}</h3><table class="rp-table rp-punch"><thead><tr><th>Photo</th><th>Item</th><th>Priority</th><th>Assigned</th><th>Status</th></tr></thead><tbody>`;
+          for (const it of g.items) {
+            const url = it.photo ? photoUrl(it.photo) : "";
+            const tags = punchTags(it);
+            body += `<tr class="st-${esc(it.status || "open")}"><td class="rp-pphoto">${url ? `<img src="${esc(url)}" alt="">` : ""}</td>
+              <td>${String(it.text || "").trim() ? `<div class="rp-rich rp-task">${richHtml(it.text)}</div>` : ""}${String(it.note || "").trim() ? `<div class="rp-rich rp-pnote">${richHtml(it.note)}</div>` : ""}${tags.map((x) => `<span class="rp-tag">${esc(x)}</span>`).join("")}</td>
+              <td>${esc(tierShort(it.tier))}</td><td>${esc(it.assigned || "")}</td><td class="rp-status">${esc(statusLabel(it.status))}</td></tr>`;
+          }
+          body += `</tbody></table>`;
+        }
+      }
       if (sec.kind === "priorities") {
         body += `<table class="rp-table"><thead><tr><th>Priority</th><th>What needs to happen</th></tr></thead><tbody>`;
         for (const g of groupPriorities(c.items)) {
@@ -147,5 +205,5 @@
       </article>`;
   }
 
-  window.Report = { TIERS, esc, parseRich, richHtml, plain, niceDate, fileBase, sectionHasContent, groupPriorities, signatureLines, reportHtml };
+  window.Report = { TIERS, esc, parseRich, richHtml, plain, niceDate, fileBase, sectionHasContent, groupPriorities, signatureLines, reportHtml, STATUSES, statusLabel, tierShort, shortDate, groupPunch, punchCounts, punchTags, punchVisible };
 })();

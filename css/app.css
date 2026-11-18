@@ -257,3 +257,30 @@ td.num, th.num { text-align: right; }
 @media (max-width: 820px) {
   .bottomnav a.nav-link { flex: 1; color: var(--gray); font-size: 0.72rem; padding: 12px 6px; text-align: center; text-decoration: none; white-space: nowrap; font-weight: 600; }
 }
+
+/* Punch list editor: compact rows that open for editing */
+.punch-tools { margin-bottom: 6px; }
+.punch-tools .field { max-width: 260px; }
+.punch-item { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 6px; background: var(--white); }
+.punch-item[open] { border-color: var(--green); }
+.punch-item > summary { list-style: none; display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; padding: 6px 8px; cursor: pointer; }
+.punch-item > summary::-webkit-details-marker { display: none; }
+.ps-thumb { width: 44px; height: 44px; border-radius: 6px; background: #EFEDEA; overflow: hidden; display: block; }
+.ps-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ps-main { min-width: 0; }
+.ps-text { display: block; font-weight: 600; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ps-meta { display: block; font-size: 0.75rem; color: #6B6B6B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ps-status { font-size: 0.75rem; padding: 5px 9px; border-radius: 14px; background: #EFEDEA; color: #3A3A3A; border: 0; white-space: nowrap; margin: 0; }
+.punch-item.st-progress .ps-status { background: #FFF1D6; color: #8A5300; }
+.punch-item.st-done .ps-status { background: #E3F3E8; color: #00702F; }
+.punch-item.st-done .ps-text { color: #6B6B6B; text-decoration: line-through; }
+.punch-body { display: grid; grid-template-columns: 170px 1fr; gap: 12px; padding: 4px 10px 10px; border-top: 1px solid var(--line); }
+.photo-box.small-box { min-height: 120px; }
+.photo-box.small-box img { max-height: 150px; }
+.punch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0 10px; }
+.punch-grid .field { margin-bottom: 8px; }
+.punch-grid select, .punch-grid input { font-size: 0.9rem; padding-left: 8px; padding-right: 4px; }
+@media (max-width: 700px) {
+  .punch-body { grid-template-columns: 1fr; }
+  .punch-grid { grid-template-columns: 1fr 1fr; }
+}

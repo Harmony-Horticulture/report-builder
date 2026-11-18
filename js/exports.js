@@ -108,6 +108,7 @@
     const property = String(report.property || report.client_name || "");
     const cons = report.consultant || {};
     const isPhotoReport = (report.sections || []).some((s) => s.kind === "photos");
+    const isPunch = (report.sections || []).some((s) => s.kind === "punchlist");
 
     const t = (text, o = {}) => new d.TextRun({ text, ...o });
     const runs = (rr, o = {}) => rr.map((r) => t(r.text, { bold: r.bold || o.bold, color: o.color }));
@@ -169,7 +170,9 @@
     const greet = String(report.contact_name || "").trim();
     const when = R.niceDate(report.report_date);
     children.push(new d.Paragraph({ style: "HHBody", spacing: { after: 200 }, children: [t(
-      isPhotoReport
+      isPunch
+        ? `${greet ? `Prepared for ${greet}. ` : ""}Thank you for trusting us with the care of ${property}. Below is the punch list from our inspections, with the priority, who it is assigned to and where each item stands as of ${when}.`
+        : isPhotoReport
         ? `${greet ? `Prepared for ${greet}. ` : ""}Thank you for trusting us with the care of ${property}. Below are the photos and notes from our visit on ${when}, so you can see exactly what we saw and what comes next.`
         : `${greet ? `Prepared for ${greet}. ` : ""}Thank you for trusting us with the care of ${property}. This report summarizes what we observed on our visit on ${when}, with our recommendations and priorities so you know exactly what to tackle first.`
     )] }));
@@ -212,6 +215,43 @@
             rows: [new d.TableRow({ cantSplit: true, children: cells })],
           }));
         });
+      }
+
+      if (sec.kind === "punchlist") {
+        // Compact table per inspection date: photo, task (with notes), priority, assigned to, status
+        const COLS = [1700, CONTENT_W - 1700 - 1300 - 1300 - 1150, 1300, 1300, 1150];
+        const pad = { top: 70, bottom: 70, left: 90, right: 90 };
+        const small = (text, o = {}) => new d.Paragraph({ style: "HHBody", spacing: { after: 0 }, children: [t(text, { size: 17, ...o })] });
+        const cell = (i, children, o = {}) => new d.TableCell({ width: { size: COLS[i], type: d.WidthType.DXA }, shading: shade(PANEL), margins: pad, children, ...o });
+        const smallRich = (text, o = {}) => R.parseRich(text).map((b) => new d.Paragraph({ style: "HHBody", spacing: { after: 30 },
+          ...(b.type === "li" ? { numbering: { reference: "hh-bullets", level: 0 } } : {}), children: b.runs.map((r) => t(r.text, { bold: r.bold || o.bold, size: o.size || 17, color: o.color })) }));
+        const maxW = Math.floor((COLS[0] - 180) / PX), maxH = 90;
+        children.push(new d.Paragraph({ style: "HHBody", children: [t(R.punchCounts(c.items), { size: 17, color: GRAY })] }));
+        for (const g of R.groupPunch(c.items)) {
+          children.push(kicker(g.title));
+          const head = new d.TableRow({ tableHeader: true, cantSplit: true, children: ["Photo", "Item", "Priority", "Assigned", "Status"].map((h, i) =>
+            new d.TableCell({ width: { size: COLS[i], type: d.WidthType.DXA }, shading: shade(BROWN), margins: pad,
+              children: [small(h, { bold: true, color: "FFFFFF" })] })) });
+          const rows = [head];
+          g.items.forEach((it) => {
+            const p = it.photo ? photos.get(it.photo.id) : null;
+            const body = [];
+            if (String(it.text || "").trim()) body.push(...smallRich(it.text, { size: 18, bold: true }));
+            if (String(it.note || "").trim()) body.push(...smallRich(it.note, { color: GRAY }));
+            const tags = R.punchTags(it);
+            if (tags.length) body.push(small(tags.join("  ·  "), { size: 15, color: BROWN, italics: true }));
+            if (!body.length) body.push(small(""));
+            const st = it.status || "open";
+            rows.push(new d.TableRow({ cantSplit: true, children: [
+              cell(0, [p ? picture(p, maxW, maxH, `Punch list item, ${property}`) : small("")]),
+              cell(1, body),
+              cell(2, [small(R.tierShort(it.tier))]),
+              cell(3, [small(it.assigned || "")]),
+              cell(4, [small(R.statusLabel(st), { bold: st !== "open", color: st === "done" ? GREEN : st === "progress" ? "B26B00" : TEXT })]),
+            ] }));
+          });
+          children.push(new d.Table({ width: { size: CONTENT_W, type: d.WidthType.DXA }, columnWidths: COLS, layout: d.TableLayoutType.FIXED, borders: gapBorders, rows }));
+        }
       }
 
       if (sec.kind === "priorities") {
@@ -440,6 +480,56 @@
           ensure(14);
           doc.setDrawColor(226, 226, 226); doc.setLineWidth(0.5); doc.line(M, y, M + CW, y);
           y += 14;
+        }
+      }
+
+      if (sec.kind === "punchlist") {
+        // Compact table per inspection date (same columns as Word)
+        const COLS = [84, 0, 66, 70, 60], GAP = 2, PAD = 6, SZ = 8.5, LEAD = 11;
+        COLS[1] = CW - COLS[0] - COLS[2] - COLS[3] - COLS[4] - 4 * GAP;
+        const xs = COLS.reduce((a, w, i) => (a.push(i ? a[i - 1] + COLS[i - 1] + GAP : M), a), []);
+        const PH = 64;
+        const headRow = () => {
+          fill(BROWN); doc.rect(M, y, CW, 18, "F");
+          font("bold"); doc.setFontSize(8.5); color("FFFFFF");
+          ["Photo", "Item", "Priority", "Assigned", "Status"].forEach((h, i) => doc.text(h, xs[i] + PAD, y + 12));
+          y += 18 + GAP;
+        };
+        const cellLines = (text, w) => { font("normal"); doc.setFontSize(SZ); return doc.splitTextToSize(String(text || ""), w - 2 * PAD); };
+        font("normal"); doc.setFontSize(9); color(GRAY); doc.text(R.punchCounts(c.items), M, y + 8); y += 16;
+        for (const g of R.groupPunch(c.items)) {
+          ensure(70);
+          font("bold"); doc.setFontSize(9); color(PINK); doc.text(g.title.toUpperCase(), M, y + 9, { charSpace: 0.4 }); y += 15;
+          headRow();
+          for (const it of g.items) {
+            const p = it.photo ? photos.get(it.photo.id) : null;
+            const size = p ? fit(p.w, p.h, COLS[0] - 2 * PAD, PH) : null;
+            const tw = COLS[1] - 2 * PAD;
+            const tags = R.punchTags(it).join("  ·  ");
+            const task = String(it.text || "").split("\n").map((l) => (/^\s*[-•*]\s/.test(l) || /\*\*/.test(l) || !l.trim() ? l : `**${l.trim()}**`)).join("\n");
+            const taskH = task.trim() ? richHeight(task, tw, SZ + 0.5, LEAD) : 0;
+            const noteH = String(it.note || "").trim() ? richHeight(it.note, tw, SZ, LEAD) : 0;
+            const tagLines = tags ? cellLines(tags, COLS[1]) : [];
+            const assignedLines = cellLines(it.assigned, COLS[3]);
+            const prioLines = cellLines(R.tierShort(it.tier), COLS[2]);
+            const h = Math.max(size ? size.h + 2 * PAD : 0, taskH + noteH + tagLines.length * 10 + 2 * PAD - 2, assignedLines.length * LEAD + 2 * PAD, prioLines.length * LEAD + 2 * PAD, 24);
+            if (y + h > BOTTOM) { newPage(); headRow(); }
+            const top = y;
+            fill(PANEL); COLS.forEach((w, i) => doc.rect(xs[i], top, w, h, "F"));
+            if (p) doc.addImage(p.dataUrl, /^data:image\/png/.test(p.dataUrl) ? "PNG" : "JPEG", xs[0] + PAD, top + PAD, size.w, size.h, undefined, "FAST");
+            y = top + PAD - 2;
+            if (taskH) writeRich(task, xs[1] + PAD, tw, SZ + 0.5, LEAD);
+            if (noteH) writeRich(it.note, xs[1] + PAD, tw, SZ, LEAD, GRAY);
+            if (tagLines.length) { font("normal"); doc.setFontSize(7.5); color(BROWN); tagLines.forEach((l) => { doc.text(l, xs[1] + PAD, y + 7); y += 10; }); }
+            const st = it.status || "open";
+            font("normal"); doc.setFontSize(SZ); color(TEXT);
+            prioLines.forEach((l, i) => doc.text(l, xs[2] + PAD, top + PAD + 7 + i * LEAD));
+            assignedLines.forEach((l, i) => doc.text(l, xs[3] + PAD, top + PAD + 7 + i * LEAD));
+            font(st === "open" ? "normal" : "bold"); color(st === "done" ? GREEN : st === "progress" ? "B26B00" : TEXT);
+            doc.text(R.statusLabel(st), xs[4] + PAD, top + PAD + 7);
+            y = top + h + GAP;
+          }
+          y += 8;
         }
       }
 
