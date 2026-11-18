@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F2F2F2;padding:24px 12px;font-family:Montserrat,Arial,Helvetica,sans-serif;color:#1A1A1A;">
 <tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#FFFFFF;border-radius:10px;overflow:hidden;">
-  <tr><td style="background:#5F351B;padding:22px 28px;"><img src="${esc(appUrl)}assets/logo-reversed.png" width="150" alt="Harmony Horticulture" style="display:block;width:150px;height:auto;border:0;"></td></tr>
+  <tr><td style="background:#FFFFFF;padding:24px 28px 18px;border-bottom:3px solid #8AC641;"><img src="${esc(appUrl)}assets/logo.png" width="150" alt="Harmony Horticulture" style="display:block;width:150px;height:auto;border:0;"></td></tr>
   <tr><td style="padding:30px 28px 8px;">
     <p style="margin:0 0 6px;color:#F065A5;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">${esc(report.type_name)}</p>
     <h1 style="margin:0 0 20px;color:#5F351B;font-size:22px;font-weight:300;letter-spacing:1px;text-transform:uppercase;">${esc(property)}</h1>
