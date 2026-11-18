@@ -1,0 +1,42 @@
+/* The branded report as clients see it (preview, client link and print) */
+.rp { background: #FFFFFF; color: #1A1A1A; max-width: 816px; margin: 0 auto; padding: 48px 56px 36px; font-family: "Montserrat", "Work Sans", Arial, sans-serif; font-size: 15px; line-height: 1.55; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+.rp-head { margin-bottom: 26px; }
+.rp-logo { width: 150px; display: block; }
+.rp-title { font-weight: 300; text-transform: uppercase; letter-spacing: 0.04em; color: #5F351B; font-size: 1.85rem; margin: 0 0 6px; line-height: 1.2; }
+.rp-sub { color: #F065A5; text-transform: uppercase; font-weight: 600; letter-spacing: 0.1em; font-size: 0.8rem; margin: 0 0 20px; }
+.rp-info { width: 100%; border-collapse: separate; border-spacing: 0 2px; margin-bottom: 8px; font-size: 0.92rem; }
+.rp-info th { background: #5F351B; color: #FFFFFF; text-align: left; width: 130px; padding: 8px 12px; font-weight: 700; white-space: nowrap; }
+.rp-info td { background: #F2F2F2; padding: 8px 12px; border-left: 2px solid #FFFFFF; }
+.rp-section h2 { font-weight: 300; text-transform: uppercase; letter-spacing: 0.05em; color: #5F351B; font-size: 1.2rem; border-bottom: 2px solid #8AC641; padding-bottom: 6px; margin: 30px 0 14px; }
+.rp-rich p { margin: 0 0 8px; }
+.rp-rich ul { margin: 0 0 8px; padding-left: 20px; }
+.rp-rich li { margin-bottom: 3px; }
+.rp-rich li::marker { color: #009344; }
+.rp-label { font-weight: 700; color: #5F351B; margin: 4px 0 3px; }
+.rp-obs { display: grid; grid-template-columns: 290px 1fr; gap: 20px; padding: 14px 0; border-bottom: 1px solid #E2E2E2; break-inside: avoid; page-break-inside: avoid; }
+.rp-obs.no-photo { grid-template-columns: 1fr; }
+.rp-photo img { width: 100%; height: auto; max-height: 360px; object-fit: contain; object-position: left top; display: block; }
+.rp-table { width: 100%; border-collapse: separate; border-spacing: 2px; font-size: 0.92rem; }
+.rp-table th { background: #5F351B; color: #FFFFFF; text-align: left; padding: 8px 12px; }
+.rp-table td { background: #F2F2F2; padding: 8px 12px; vertical-align: top; }
+.rp-table td.rp-tier { width: 150px; color: #5F351B; }
+.rp-table td.rp-tier span { color: #595959; font-size: 0.78rem; }
+.rp-table tr:nth-child(even) td { background: #F2F2F2; }
+.rp-sig { margin-top: 34px; font-size: 0.92rem; color: #595959; break-inside: avoid; }
+.rp-sig .rp-sig-name { color: #1A1A1A; font-weight: 700; }
+.rp-foot { margin-top: 36px; padding-top: 8px; border-top: 1px solid #8AC641; font-size: 0.72rem; color: #595959; }
+.rp-empty { color: #595959; }
+@media (max-width: 700px) {
+  .rp { padding: 24px 18px; font-size: 14px; box-shadow: none; }
+  .rp-obs { grid-template-columns: 1fr; }
+  .rp-info th { width: 96px; }
+  .rp-title { font-size: 1.45rem; }
+}
+@media print {
+  @page { size: letter; margin: 0.6in; }
+  body { background: #FFFFFF !important; }
+  .no-print { display: none !important; }
+  .rp { box-shadow: none; padding: 0; max-width: none; }
+  .rp-section h2 { break-after: avoid; page-break-after: avoid; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
