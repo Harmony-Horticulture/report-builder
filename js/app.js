@@ -56,6 +56,25 @@
     $("#appView").classList.add("hidden");
     $("#authView").classList.remove("hidden");
     $("#authContent").innerHTML = html;
+    addPasswordPeek($("#authContent"));
+  }
+  // A Show button inside each password box: tap to see what was typed, tap again to hide
+  function addPasswordPeek(root) {
+    $$('input[type="password"]', root).forEach((inp) => {
+      const wrap = document.createElement("div");
+      wrap.className = "pw-wrap";
+      inp.parentNode.insertBefore(wrap, inp);
+      wrap.appendChild(inp);
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "pw-eye"; b.textContent = "Show"; b.setAttribute("aria-label", "Show password");
+      b.onclick = () => {
+        const show = inp.type === "password";
+        inp.type = show ? "text" : "password";
+        b.textContent = show ? "Hide" : "Show";
+        b.setAttribute("aria-label", show ? "Hide password" : "Show password");
+      };
+      wrap.appendChild(b);
+    });
   }
 
   function renderSignIn(message) {
@@ -107,11 +126,13 @@
   function renderSetPassword() {
     showAuth(`
       <h1>Choose a password</h1>
-      <p class="small muted" style="text-align:center">Welcome to Harmony Horticulture. Pick a password for your account (at least 8 characters).</p>
+      <p class="small muted" style="text-align:center">Pick a new password for your account (at least 8 characters). It works for both Reports and the Time Tracker.</p>
       <div class="field"><label for="np1">New password</label><input id="np1" type="password" autocomplete="new-password"></div>
       <div class="field"><label for="np2">Type it again</label><input id="np2" type="password" autocomplete="new-password"></div>
       <div id="npErr" class="error-text"></div>
-      <button class="primary" id="npSave">Save password</button>`);
+      <button class="primary" id="npSave">Save password</button>
+      <p class="small" style="text-align:center;margin-top:16px"><a href="#" id="npOut">Not you, or remembered it? Sign out</a></p>`);
+    $("#npOut").onclick = async (e) => { e.preventDefault(); try { await S.signOut(); } catch (x) { /* already out */ } state.me = null; renderSignIn(); };
     $("#npSave").onclick = async () => {
       const a = $("#np1").value, b = $("#np2").value;
       if (a.length < 8) { $("#npErr").textContent = "Use at least 8 characters."; return; }
@@ -128,6 +149,7 @@
     { route: "new", label: "New Report" },
     { route: "profile", label: "Profile" },
     { route: "team", label: "Team", admin: true },
+    { route: "clients", label: "Clients", admin: true },
     { route: "settings", label: "Settings", admin: true },
   ];
   function renderShell() {
@@ -166,6 +188,7 @@
       if (route === "review" && id) { setActive("dashboard"); return await renderReview(id); }
       if (route === "profile") { setActive("profile"); return renderProfile(false); }
       if (route === "team" && isAdmin()) { setActive("team"); return await renderTeam(); }
+      if (route === "clients" && isAdmin()) { setActive("clients"); return await renderClients(); }
       if (route === "settings" && isAdmin()) { setActive("settings"); return await renderSettings(); }
       setActive("dashboard");
       return await renderDashboard();
@@ -462,6 +485,16 @@
       return;
     }
     if (Geo.has(loc)) it.loc = loc;
+  }
+  // The location arrives after the photo (the phone may still be asking
+  // for permission), so the photo is never held up by it
+  async function attachLoc(it, locP) {
+    const loc = await Promise.race([locP, new Promise((r) => setTimeout(() => r(null), 30000))]);
+    setLoc(it, loc);
+    if (!Geo.has(it.loc) || !state.report) return;
+    scheduleSave();
+    const typing = document.activeElement && /^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement.tagName);
+    if (!typing && $(`[data-pid="${CSS.escape(it.id)}"]`)) await redraw();
   }
   const locNote = (loc) => (loc.src === "photo" ? "(from the photo)" : loc.acc ? `(within about ${loc.acc} m)` : "");
   function punchEditor(s, c, urls) {
@@ -767,10 +800,11 @@
       try {
         toast("Adding photo…");
         const it = sectionItems(inp.dataset.sec).find((x) => x.id === inp.dataset.id);
-        const [photo, loc] = await Promise.all([addPhoto(file), wantsLoc(inp.dataset.sec) ? Geo.forPhoto(file, inp.hasAttribute("capture")) : null]);
-        it.photo = photo; setLoc(it, loc);
+        const locP = wantsLoc(inp.dataset.sec) ? Geo.forPhoto(file, inp.hasAttribute("capture")) : null;
+        it.photo = await addPhoto(file);
         scheduleSave(); await redraw();
         toast("Photo added.");
+        if (locP) attachLoc(it, locP);
       } catch (e) { fail(e); }
     }));
     $$("[data-webcam]").forEach((b) => (b.onclick = async () => {
@@ -779,10 +813,11 @@
       try {
         toast("Adding photo…");
         const it = sectionItems(b.dataset.sec).find((x) => x.id === b.dataset.id);
-        const [photo, loc] = await Promise.all([addPhoto(file), wantsLoc(b.dataset.sec) ? Geo.forPhoto(file, true) : null]);
-        it.photo = photo; setLoc(it, loc);
+        const locP = wantsLoc(b.dataset.sec) ? Geo.forPhoto(file, true) : null;
+        it.photo = await addPhoto(file);
         scheduleSave(); await redraw();
         toast("Photo added.");
+        if (locP) attachLoc(it, locP);
       } catch (e) { fail(e); }
     }));
     $$("[data-multi]").forEach((inp) => (inp.onchange = async () => {
@@ -795,9 +830,10 @@
         for (const f of files) {
           if (sec.kind !== "punchlist") { sectionItems(sec.key).push({ id: uid(), photo: await addPhoto(f), note: "" }); continue; }
           const it = newPunchItem(c.newDate || r.report_date);
-          const [photo, loc] = await Promise.all([addPhoto(f), Geo.forPhoto(f, false)]);
-          it.photo = photo; setLoc(it, loc);
+          const locP = Geo.forPhoto(f, false);
+          it.photo = await addPhoto(f);
           sectionItems(sec.key).push(it);
+          attachLoc(it, locP);
         }
         scheduleSave(); await redraw();
         toast("Photos added.");
@@ -936,10 +972,13 @@
   }
   function toggleDictation(btn) {
     const path = btn.dataset.mic;
+    if (dict && isIOS && Date.now() - dict.started > 15000) endDictation(dict); // iPhone stops listening on its own
     if (dict) {
       const d = dict;
       if (d.path === path) {
         // Stop: keep what was just said, then make sure it is really finished
+        // iPhone ignores stop and keeps the microphone, so let it go right away there
+        if (isIOS) { endDictation(d); return; }
         dict = null; markMic(null, false);
         try { d.rec.stop(); } catch (e) { /* ended */ }
         setTimeout(() => endDictation(d), 2000);
@@ -952,7 +991,7 @@
     if (!SR) { toast("Dictation isn't available in this browser. Use Chrome or Safari, or the microphone on your phone's keyboard.", true); return; }
     if (!navigator.onLine) { toast("Dictation needs an internet connection on this device. You can still use your keyboard's microphone.", true); return; }
     const rec = new SR();
-    const d = { rec, path };
+    const d = { rec, path, started: Date.now() };
     rec.lang = "en-US";
     // iPhone Safari is unreliable with continuous listening: one phrase per tap there
     rec.continuous = !isIOS;
@@ -971,11 +1010,16 @@
       const next = cur + (cur && !/\s$/.test(cur) ? " " : "") + said;
       if (ta) { ta.value = next; ta.dispatchEvent(new Event("input")); }
       else if (state.report) { setPath(state.report, path, next); scheduleSave(); }
+      // iPhone: the phrase is in, so close this session now. Safari often never
+      // says it has ended, which used to leave the microphone stuck.
+      if (!rec.continuous) endDictation(d);
     };
     rec.onerror = (e) => {
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") toast("Allow microphone access to dictate.", true);
+      if (dict === d) { dict = null; markMic(null, false); }
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") toast(isIOS ? "Dictation is blocked. On iPhone, turn on Siri & Dictation in Settings and allow the microphone for this site, or use the microphone on the keyboard." : "Allow microphone access to dictate.", true);
       else if (e.error === "network") toast("Dictation needs an internet connection.", true);
-      else if (e.error === "audio-capture") toast("No microphone found.", true);
+      else if (e.error === "audio-capture") toast("The microphone is busy or missing. Wait a second and tap again.", true);
+      else if (e.error === "no-speech") toast("Didn't catch that. Tap the microphone and try again.", true);
     };
     rec.onend = () => { if (dict === d) { dict = null; markMic(null, false); } };
     dict = d;
@@ -985,7 +1029,7 @@
       toast(isIOS ? "Listening… say one phrase. Tap the microphone again for the next one." : "Listening… tap the microphone again to stop.");
     } catch (e) {
       endDictation(d);
-      toast("Couldn't start the microphone. Try again in a moment.", true);
+      toast(isIOS ? "Couldn't start the microphone. Try again, or use the microphone on the keyboard." : "Couldn't start the microphone. Try again in a moment.", true);
     }
   }
 
@@ -1208,6 +1252,101 @@
   // =====================================================================
   // Team: invite-only access (RC-02)
   // =====================================================================
+  // =====================================================================
+  // Clients: add one, or paste many from a spreadsheet
+  // =====================================================================
+  // Reads pasted rows: tab separated (copied from a spreadsheet) or commas.
+  // Columns: Client name, Contact name, Contact email, Property (all but the name optional).
+  function parseClientRows(text) {
+    const rows = [];
+    for (const raw of String(text || "").split(/\r?\n/)) {
+      if (!raw.trim()) continue;
+      const cells = raw.includes("\t") ? raw.split("\t") : csvCells(raw);
+      const [name, contact_name, contact_email, property] = cells.map((x) => String(x || "").trim());
+      if (!name || /^(client|customer|name)( name)?$/i.test(name)) continue; // skip a header row
+      rows.push({ name, contact_name: contact_name || "", contact_email: firstEmail(contact_email), properties: [property || name] });
+    }
+    return rows;
+  }
+  function csvCells(line) {
+    const out = []; let cur = "", q = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (q) { if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; } else if (ch === '"') q = false; else cur += ch; }
+      else if (ch === '"') q = true; else if (ch === ",") { out.push(cur); cur = ""; } else cur += ch;
+    }
+    out.push(cur);
+    return out;
+  }
+
+  async function renderClients() {
+    state.clients = await S.listClients();
+    const q = state.clientQuery || "";
+    const list = state.clients.filter((c) => !q || c.name.toLowerCase().includes(q.toLowerCase()) || String(c.contact_name || "").toLowerCase().includes(q.toLowerCase()));
+    $("#view").innerHTML = `
+      <div class="page-head"><div><p class="eyebrow">Admin</p><h1>Clients</h1></div></div>
+      <div class="card">
+        <h2>Add a client</h2>
+        <p class="small muted">Clients are shared with the Time Tracker, so a new client shows up there too. To update the whole list from QuickBooks, use Lists → Clients in the <a href="${esc((window.HH_CONFIG && window.HH_CONFIG.TIME_TRACKER_URL) || "https://harmony-horticulture.github.io/time-tracker/")}" target="_blank" rel="noopener">Time Tracker</a>.</p>
+        <div class="grid4">
+          <div class="field"><label for="ncName">Client name</label><input id="ncName" placeholder="e.g. Smith Residence"></div>
+          <div class="field"><label for="ncContact">Contact name</label><input id="ncContact"></div>
+          <div class="field"><label for="ncEmail">Contact email</label><input id="ncEmail" type="email"></div>
+          <div class="field"><label for="ncProp">Property (optional)</label><input id="ncProp" placeholder="Same as client name"></div>
+        </div>
+        <button type="button" id="ncAdd">Add client</button>
+      </div>
+      <div class="card">
+        <h2>Add many at once</h2>
+        <p class="small muted">Copy rows from a spreadsheet and paste them here, or type one client per line with commas. Columns in this order: <b>Client name, Contact name, Contact email, Property</b>. Only the name is required. Names already in the list are skipped.</p>
+        <textarea id="bulkRows" rows="6" placeholder="Smith Residence, Jane Smith, jane@example.com&#10;Lopez Estate, Carlos Lopez, carlos@example.com, Lopez Estate - Guest House"></textarea>
+        <div class="btn-row" style="margin-top:10px"><button type="button" class="secondary" id="bulkCheck">Check</button><button type="button" id="bulkAdd">Add these clients</button></div>
+        <div id="bulkOut" class="small" style="margin-top:8px"></div>
+      </div>
+      <div class="card">
+        <h2>All clients <span class="small muted">(${state.clients.length})</span></h2>
+        <input id="clQuery" placeholder="Search clients" value="${esc(q)}" style="margin-bottom:10px">
+        <div class="rlist">${list.slice(0, 300).map((c) => `<div class="row"><div><div class="t">${esc(c.name)}${c.active === false ? ' <span class="small muted">(inactive)</span>' : ""}</div>
+          <div class="m">${esc([c.contact_name, c.contact_email].filter(Boolean).join(" · ") || "No contact yet")}</div></div></div>`).join("") || `<p class="small muted">No clients match.</p>`}</div>
+        ${list.length > 300 ? `<p class="small muted">Showing the first 300. Search to narrow it down.</p>` : ""}
+      </div>`;
+    const qi = $("#clQuery");
+    qi.oninput = () => { clearTimeout(state.clientQT); state.clientQT = setTimeout(async () => { state.clientQuery = qi.value; await renderClients(); const n = $("#clQuery"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
+    $("#ncAdd").onclick = async () => {
+      const name = $("#ncName").value.trim();
+      if (!name) { toast("Enter the client name.", true); return; }
+      if (state.clients.some((c) => [c.name, c.qb_name].some((x) => x && x.toLowerCase() === name.toLowerCase()))) { toast("There's already a client with that name.", true); return; }
+      const email = $("#ncEmail").value.trim();
+      if (email && !firstEmail(email)) { toast("That email doesn't look right.", true); return; }
+      try {
+        await S.addClient({ name, contact_name: $("#ncContact").value.trim(), contact_email: firstEmail(email), properties: [$("#ncProp").value.trim() || name] });
+        toast(`${name} added.`); await renderClients();
+      } catch (e) { fail(e); }
+    };
+    const check = () => {
+      const rows = parseClientRows($("#bulkRows").value);
+      const have = new Set(state.clients.flatMap((c) => [c.name, c.qb_name].filter(Boolean).map((x) => x.toLowerCase())));
+      const seen = new Set();
+      const fresh = [], skipped = [];
+      for (const r of rows) {
+        const k = r.name.toLowerCase();
+        if (have.has(k) || seen.has(k)) skipped.push(r.name); else { seen.add(k); fresh.push(r); }
+      }
+      $("#bulkOut").innerHTML = rows.length
+        ? `<b>${fresh.length}</b> new client${fresh.length === 1 ? "" : "s"} to add${skipped.length ? `, ${skipped.length} skipped because the name is already there (${esc(skipped.slice(0, 5).join(", "))}${skipped.length > 5 ? "…" : ""})` : ""}.
+           ${fresh.slice(0, 5).map((r) => `<div class="muted">${esc(r.name)}${r.contact_name ? " · " + esc(r.contact_name) : ""}${r.contact_email ? " · " + esc(r.contact_email) : ""}</div>`).join("")}${fresh.length > 5 ? `<div class="muted">and ${fresh.length - 5} more</div>` : ""}`
+        : "Nothing to add yet.";
+      return fresh;
+    };
+    $("#bulkCheck").onclick = () => check();
+    $("#bulkAdd").onclick = async () => {
+      const fresh = check();
+      if (!fresh.length) return;
+      if (!(await confirmBox("Add these clients?", `${fresh.length} new client${fresh.length === 1 ? "" : "s"} will be added. They also show up in the Time Tracker.`, "Add them"))) return;
+      try { await S.addClients(fresh); toast(`${fresh.length} client${fresh.length === 1 ? "" : "s"} added.`); await renderClients(); } catch (e) { fail(e); }
+    };
+  }
+
   async function renderTeam() {
     const [people, invites] = await Promise.all([S.listPeople(), S.listInvitations()]);
     $("#view").innerHTML = `

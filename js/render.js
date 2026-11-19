@@ -212,7 +212,7 @@
             const tags = punchTags(it);
             body += `<tr class="st-${esc(it.status || "open")}"><td class="rp-pphoto">${url ? `<img src="${esc(url)}" alt="">` : ""}</td>
               <td><span class="rp-num">${nums.get(it.id)}</span>${String(it.text || "").trim() ? `<div class="rp-rich rp-task">${richHtml(it.text)}</div>` : ""}${String(it.note || "").trim() ? `<div class="rp-rich rp-pnote">${richHtml(it.note)}</div>` : ""}${tags.map((x) => `<span class="rp-tag">${esc(x)}</span>`).join("")}${mapUrl(it.loc) ? `<a class="rp-tag rp-map" href="${esc(mapUrl(it.loc))}" target="_blank" rel="noopener">📍 View on map</a>` : ""}</td>
-              <td>${esc(tierShort(it.tier))}</td><td>${esc(it.assigned || "")}</td><td class="rp-status">${esc(statusLabel(it.status))}</td></tr>`;
+              <td data-label="Priority">${esc(tierShort(it.tier))}</td><td data-label="Assigned">${esc(it.assigned || "")}</td><td class="rp-status" data-label="Status">${esc(statusLabel(it.status))}</td></tr>`;
           }
           body += `</tbody></table>`;
         }

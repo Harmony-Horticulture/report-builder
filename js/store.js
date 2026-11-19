@@ -169,8 +169,14 @@
       async listClients() {
         return fetchAll(() => sb.from("clients").select("*").order("name"));
       },
-      async addClient({ name, properties }) {
-        return check(await sb.from("clients").insert({ name, properties }).select("*").single());
+      async addClient({ name, properties, contact_name = "", contact_email = "" }) {
+        return check(await sb.from("clients").insert({ name, properties, contact_name, contact_email }).select("*").single());
+      },
+      async addClients(list) {
+        const rows = list.map(({ name, properties, contact_name = "", contact_email = "" }) => ({ name, properties, contact_name, contact_email }));
+        const out = [];
+        for (let i = 0; i < rows.length; i += 200) out.push(...check(await sb.from("clients").insert(rows.slice(i, i + 200)).select("*")));
+        return out;
       },
 
       // Report types
@@ -485,10 +491,11 @@
         Object.assign(db.people.find((p) => p.id === id), patch); save();
       },
       async listClients() { return clone(db.clients).sort((a, b) => a.name.localeCompare(b.name)); },
-      async addClient({ name, properties }) {
+      async addClients(list) { const out = []; for (const c of list) out.push(await this.addClient(c)); return out; },
+      async addClient({ name, properties, contact_name = "", contact_email = "" }) {
         if (!isAdmin()) throw new Error("You don't have permission to do that.");
         if (db.clients.some((c) => c.name.toLowerCase() === name.toLowerCase())) throw new Error("That name is already used.");
-        const c = { id: Math.max(0, ...db.clients.map((x) => x.id)) + 1, name, properties, active: true };
+        const c = { id: Math.max(0, ...db.clients.map((x) => x.id)) + 1, name, properties, contact_name, contact_email, active: true };
         db.clients.push(c); save(); return clone(c);
       },
       async listReportTypes() { return clone(db.types).sort((a, b) => a.sort_order - b.sort_order); },
