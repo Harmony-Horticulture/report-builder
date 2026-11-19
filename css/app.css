@@ -287,3 +287,8 @@ td.num, th.num { text-align: right; }
 .loc-row { font-size: 0.8rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 6px; margin-top: 4px; }
 .loc-row a { color: var(--green); font-weight: 600; }
 .loc-row button { margin: 0; }
+
+/* Show / hide password */
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-right: 64px; width: 100%; }
+.pw-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); margin: 0; padding: 5px 10px; font-size: 0.8rem; font-weight: 600; background: transparent; color: var(--green); border: 0; box-shadow: none; width: auto; }

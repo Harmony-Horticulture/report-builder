@@ -67,3 +67,17 @@
 .rp-map-fig .pin-key i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin: 0 4px 0 8px; vertical-align: middle; }
 .rp-num { float: left; min-width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 11px; background: #5F351B; color: #FFFFFF; font-weight: 700; font-size: 0.72rem; margin: 0 8px 2px 0; padding: 0 4px; }
 .rp-tag.rp-map { color: #009344; border-color: #9FD3B0; text-decoration: none; font-weight: 600; }
+/* Punch list on a phone: one card per item, photo on the left, details underneath */
+@media (max-width: 700px) {
+  .rp-punch, .rp-punch tbody { display: block; }
+  .rp-punch thead { display: none; }
+  .rp-punch tr { display: grid; grid-template-columns: 108px 1fr; gap: 0 10px; background: #F2F2F2; margin-bottom: 6px; padding: 8px; border-radius: 4px; }
+  .rp-punch td { background: transparent !important; padding: 0 0 2px; border: 0 !important; }
+  .rp-punch td.rp-pphoto { grid-row: span 4; }
+  .rp-pphoto img { max-height: 120px; }
+  .rp-punch td[data-label] { font-size: 0.8rem; color: #595959; }
+  .rp-punch td[data-label]:empty { display: none; }
+  .rp-punch td[data-label]::before { content: attr(data-label) ": "; font-weight: 700; color: #5F351B; }
+  .rp-punch td.rp-pphoto:empty { display: none; }
+  .rp-punch tr:has(td.rp-pphoto:empty) { grid-template-columns: 1fr; }
+}
