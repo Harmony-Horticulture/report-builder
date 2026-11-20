@@ -17,7 +17,7 @@
 .stat.green { border-left-color: var(--green); }
 .stat .sub { font-size: 0.75rem; color: var(--gray); }
 
-.lead-filters { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 4px; }
+.lead-filters { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 4px; }
 .lead-filters label { font-size: 0.75rem; }
 .lead-filters > div { min-width: 0; }
 
@@ -75,3 +75,11 @@ a.btn.secondary { background: var(--white); color: var(--green); border: 1px sol
 @keyframes hhFlash { from { background: #EAF5DD; } to { background: transparent; } }
 table.leads tr.just-added td { animation: hhFlash 3s ease-out; }
 .lead-card.just-added { animation: hhFlash 3s ease-out; border-left-color: var(--pink); }
+
+/* Sortable column headings */
+table.leads th { padding: 0; }
+.sort-btn { width: 100%; text-align: left; background: transparent; color: var(--text); font-weight: 600; font-size: 0.88rem; padding: 9px 10px; border-radius: 0; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.sort-btn:hover { background: #E9E9E9; filter: none; }
+.sort-btn .arrow { font-size: 0.7rem; color: #9A9A9A; }
+.sort-btn.on { color: var(--green); }
+.sort-btn.on .arrow { color: var(--green); }
