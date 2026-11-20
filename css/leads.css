@@ -145,3 +145,15 @@ select.stage-pick:hover, select.stage-pick:focus { border-color: currentColor; o
 .assign-pick button:hover { filter: none; border-color: var(--leaf); }
 button.assign-btn:not(.secondary) { background: var(--pink); border-color: var(--pink); }
 .assign-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; min-height: 40px; }
+
+/* Assign from the list and the card */
+select.assign-pick-sel { width: auto; min-width: 0; height: auto; margin-top: 6px; padding: 4px 24px 4px 9px; font: inherit; font-size: 0.8rem; font-weight: 600; border-radius: 20px; cursor: pointer;
+  border: 1px dashed #BDBDBD; background-color: #fff; color: var(--gray);
+  appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23777'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; }
+select.assign-pick-sel.set { border: 1px solid #F7B5D3; background-color: #FDF1F7; color: #A3125A; }
+select.assign-pick-sel:hover, select.assign-pick-sel:focus { border-color: var(--pink); outline: none; }
+.lc-assign { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.lc-assign label { margin: 0; font-size: 0.75rem; font-weight: 600; color: var(--gray); }
+.lc-assign select.assign-pick-sel { margin-top: 0; }
+.card-qb .card-assign { margin-left: auto; }
+.card-qb .card-assign select.assign-pick-sel { margin-top: 0; }
