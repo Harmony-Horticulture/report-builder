@@ -107,3 +107,4 @@ input.invalid, textarea.invalid { border-color: #C0392B !important; box-shadow: 
 .qb-check { margin-top: 10px; }
 details summary { cursor: pointer; }
 @media (max-width: 640px) { .lc-body .qa { grid-template-columns: 1fr; gap: 2px; } }
+textarea[rows="1"] { min-height: 0; height: auto; resize: vertical; }

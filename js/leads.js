@@ -102,7 +102,7 @@
           { id: "i1", lead_id: "d2", source: "intake_form", submitted_at: new Date(now - day).toISOString(), answers: [
             { q: "Contact Name", a: "Pat Rivera" }, { q: "Property Name", a: "Saguaro Heights HOA" }, { q: "Phone", a: "602-555-0144" },
             { q: "Email", a: "pat@example.org" }, { q: "Property Manager", a: "Desert Sky Management" }, { q: "Property Manager Phone", a: "602-555-0190" },
-            { q: "Property Manager Email", a: "", }, { q: "Address", a: "200 N Sample Way, Phoenix, AZ 85018" }, { q: "Service Frequency", a: "Monthly" },
+            { q: "Property Manager Email", a: "", }, { q: "Address", a: "200 N Sample Way, Phoenix, AZ 85018" }, { q: "Service Frequency", a: "Oversight" },
             { q: "A/P Contact", a: "Lee Accounts" }, { q: "Email", a: "ap@example.org" }, { q: "Phone", a: "602-555-0191" },
             { q: "W9 Required?", a: "Yes" }, { q: "COI Required?", a: "Yes" }, { q: "Gate Code", a: "#4321" }, { q: "Guard Gate Access", a: "" },
             { q: "Controller Type", a: "Rain Bird ESP-LXME" }, { q: "Number of Controllers", a: "3" }, { q: "Number of Zones", a: "48" },
@@ -522,27 +522,27 @@
       { k: "pm_name", label: "Property Manager", copy: true, re: /^property manager( name)?$/ },
       { k: "pm_phone", label: "Property Manager Phone", copy: true, type: "tel", re: /manager.*phone/ },
       { k: "pm_email", label: "Property Manager Email", copy: true, type: "email", re: /manager.*e-?mail/ },
-      { k: "address", label: "Address", col: true, copy: true, area: true, re: /address|location/ },
-      { k: "service", label: "Service Frequency", col: true, re: /frequency|^service|scope/ },
+      { k: "address", label: "Address", col: true, copy: true, area: true, rows: 1, re: /address|location/ },
     ] },
     { title: "Billing information", fields: [
+      { k: "service", label: "Service Frequency", col: true, options: ["Oversight", "Diagnostic"], re: /frequency|^service|scope/ },
       { k: "ap_name", label: "A/P Contact", copy: true, re: /a\/?p contact|accounts payable/ },
       { k: "ap_email", label: "A/P Email", copy: true, type: "email", re: /^(a\/?p )?e-?mail/ },
       { k: "ap_phone", label: "A/P Phone", copy: true, type: "tel", re: /^(a\/?p )?phone/ },
       { k: "w9", label: "W9 Required?", yn: true, re: /w-?9/ },
       { k: "coi", label: "COI Required?", yn: true, re: /\bcoi\b|certificate of insurance/ },
     ] },
-    { title: "Property access and site details", fields: [
+    { title: "Property details", fields: [
       { k: "gate_code", label: "Gate Code", re: /gate code/ },
       { k: "guard_gate", label: "Guard Gate Access", re: /guard gate/ },
       { k: "security", label: "Security Protocols", re: /security/ },
-      { k: "photo_release", label: "Photo Release", yn: true, re: /photo release/ },
+      { k: "photo_release", label: "Photo Release (Separate form)", yn: true, re: /photo release/ },
+      { k: "pets", label: "Pets or other animals", re: /pets|animals/ },
+      { k: "injector", label: "Fertilizer Injector", re: /injector/ },
       { k: "controller_type", label: "Controller Type", re: /controller type/ },
       { k: "controllers", label: "Number of Controllers", re: /controllers/ },
       { k: "zones", label: "Number of Zones", re: /zones/ },
       { k: "parking", label: "Parking Instructions", re: /parking/ },
-      { k: "pets", label: "Pets / Animals on Site", re: /pets|animals/ },
-      { k: "injector", label: "Fertilizer Injector", re: /injector/ },
       { k: "living_turf", label: "Living Turfgrass", yn: true, re: /living turf/ },
       { k: "synthetic_turf", label: "Synthetic Turfgrass", yn: true, re: /synthetic/ },
     ] },
@@ -558,14 +558,14 @@
     ] },
     { title: "Additional information", fields: [
       { k: "goals", label: "Goals", col: true, area: true, re: /goal/ },
-      { k: "images", label: "Images", area: true, re: /image|upload|photos?$/ },
+      { k: "images", label: "IMAGE(s) Upload", area: true, re: /image|upload|photos?$/ },
       { k: "expectations", label: "Expectations", area: true, re: /expectation/ },
       { k: "upcoming_events", label: "Upcoming events", re: /upcoming event/ },
       { k: "annual_events", label: "Annual events", re: /annual event/ },
       { k: "enhancements", label: "Upcoming property enhancements", area: true, re: /enhancement/ },
       { k: "heard_about", label: "How did you hear about us?", col: true, re: /hear about|find us|referred/ },
-      { k: "newsletter_email", label: "Newsletter email", type: "email", re: /newsletter|sign up/ },
-      { k: "consent", label: "Consent to emails and newsletters", yn: true, re: /consent|i agree/ },
+      { k: "newsletter_email", label: "Sign up for our Newsletter!", type: "email", re: /newsletter|sign up/ },
+      { k: "consent", label: "Consent (emails and newsletters)", yn: true, re: /consent|i agree/ },
     ] },
   ];
   // Things we note on the call (and the website form asks) that aren't intake questions
@@ -682,9 +682,10 @@
   function formInput(lead, f, fromForm) {
     const v = fieldVal(lead, f, fromForm);
     const attr = f.col ? `data-f="${f.k}"` : `data-d="${f.k}"`;
-    if (f.yn) {
-      const cur = /^\s*y/i.test(v) ? "Yes" : /^\s*n/i.test(v) ? "No" : v;
-      const opts = ["", "Yes", "No"].concat(cur && !["Yes", "No"].includes(cur) ? [cur] : []);
+    if (f.yn || f.options) {
+      const choices = f.options || ["Yes", "No"];
+      const cur = f.yn ? (/^\s*y/i.test(v) ? "Yes" : /^\s*n/i.test(v) ? "No" : v) : (choices.find((c) => c.toLowerCase() === v.trim().toLowerCase()) || v);
+      const opts = ["", ...choices].concat(cur && !choices.includes(cur) ? [cur] : []);
       return `<div class="field"><label for="${f.k}">${esc(f.label)}</label><select id="${f.k}" ${attr}>${opts.map((o) => `<option value="${esc(o)}" ${o === cur ? "selected" : ""}>${o ? esc(o) : "Not answered"}</option>`).join("")}</select></div>`;
     }
     const tag = f.area
@@ -699,10 +700,12 @@
     let lead = l;
     const fv = formValues(intakes);
     const sectionHtml = (s) => {
-      const short = s.fields.filter((f) => !f.area && !f.copy);
-      const rest = s.fields.filter((f) => f.area || f.copy);
-      return `<h3 class="form-h">${esc(s.title)}</h3>${rest.map((f) => formInput(lead, f, fv.values)).join("")}
-        ${short.length ? `<div class="grid2">${short.map((f) => formInput(lead, f, fv.values)).join("")}</div>` : ""}`;
+      // Keep the form's order; short answers two to a row, long answers full width
+      const parts = []; let run = [];
+      const flush = () => { if (run.length) parts.push(`<div class="grid2">${run.join("")}</div>`); run = []; };
+      s.fields.forEach((f) => { const h = formInput(lead, f, fv.values); if (f.area) { flush(); parts.push(h); } else run.push(h); });
+      flush();
+      return `<h3 class="form-h">${esc(s.title)}</h3>${parts.join("")}`;
     };
     $("#view").innerHTML = `
       <p style="margin:0 0 10px"><a href="#" id="backLink">← All leads</a></p>
