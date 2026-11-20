@@ -274,6 +274,7 @@
       state.me = await S.me();
       if (!state.me) return showAuth();
       if (!state.me.active) return showAuth("Your account is switched off. Ask an admin.");
+      if (state.me.role !== "admin") return showAuth("Leads is only open to Krista and Kasey. If a lead has been assigned to you, they'll send you the details.");
       renderShell();
       state.people = await S.people();
       await route();
