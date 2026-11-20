@@ -19,7 +19,9 @@ This takes about 20 minutes, once. Kasey (the intake form's owner) is needed for
 2. Paste all of [`supabase/02_leads.sql`](../supabase/02_leads.sql) and click **Run**. The result says "Leads are set up".
 3. Open another new query, paste all of **leads-import-from-slack.sql** from the project files and click **Run**. You'll see how many leads landed in each stage.
 
-Both are safe to run again.
+Then do the same with [`supabase/03_leads_won_date.sql`](../supabase/03_leads_won_date.sql), which records the day each lead is won for the "Won this month" count.
+
+All three are safe to run again.
 
 ## 2. Make a Slack link for lead messages
 

@@ -4,7 +4,7 @@
 // saved copy is only used when there is no connection.
 // Supabase (logins, reports, photos) is never stored here.
 // =====================================================================
-const CACHE = "hh-reports-v4";
+const CACHE = "hh-reports-v5";
 const SHELL = [
   "./", "index.html", "css/app.css", "css/report.css",
   "js/config.js", "js/demo-clients.js", "js/store.js", "js/render.js", "js/exports.js", "js/sample-data.js", "js/geo.js", "js/app.js",
