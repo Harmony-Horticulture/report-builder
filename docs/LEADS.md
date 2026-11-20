@@ -73,7 +73,7 @@ The response sheet and the existing #form-submissions messages keep working as t
 
 - **Lead card and Edit:** clicking a lead opens a card with only what's filled in. **Edit** opens every intake form question, in the same order as the Google Form. The client's form answers fill in on their own, and anything typed on a call is saved as you go, so the fields are the same whoever filled them in.
 
-- **Who sees leads:** admins see and edit everything. Consultants and technicians only see leads assigned to them.
+- **Who sees leads:** only admins (Krista and Kasey). They assign leads out from the Leads page. Consultants and technicians don't see the Leads page or any leads ([`supabase/05_leads_admins_only.sql`](../supabase/05_leads_admins_only.sql)).
 - **Copy buttons:** every contact field has its own **Copy** button, and **Copy for QuickBooks** copies the customer name, contact, email, phone and address in one go.
 - **Export to Excel** downloads the leads you're looking at (after filters) as a branded spreadsheet.
 - **History:** every stage change is noted automatically under **Notes and history**, with who changed it and when.
