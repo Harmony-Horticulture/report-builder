@@ -87,7 +87,7 @@
         id, lead_date: d(n), created_at: new Date(now - n * day).toISOString(), updated_at: new Date(now - n * day).toISOString(),
         project_name: "", contact_name: "", company: "", email: "", phone: "", address: "", property_type: "", service: "",
         request: "", goals: "", budget: "", newsletter: null, channel: "phone", heard_about: "", stage: "new", next_steps: "",
-        zone_quote: null, site_notes: "", assigned_to: null, in_quickbooks: false, closed_reason: "", ...o,
+        zone_quote: null, site_notes: "", assigned_to: null, in_quickbooks: false, closed_reason: "", details: {}, ...o,
       });
       return {
         leads: [
@@ -100,10 +100,16 @@
         ],
         intakes: [
           { id: "i1", lead_id: "d2", source: "intake_form", submitted_at: new Date(now - day).toISOString(), answers: [
-            { q: "Name", a: "Pat Rivera" }, { q: "Email", a: "pat@example.org" }, { q: "Phone", a: "602-555-0144" },
-            { q: "Property Name", a: "Saguaro Heights HOA" }, { q: "Address", a: "200 N Sample Way, Phoenix, AZ 85018" },
-            { q: "Frequency", a: "Oversight" }, { q: "What is the issue?", a: "Common area plants failing near the entrance. Board wants a landscape plan." },
-            { q: "Photos", a: "https://drive.google.com/open?id=example" } ] },
+            { q: "Contact Name", a: "Pat Rivera" }, { q: "Property Name", a: "Saguaro Heights HOA" }, { q: "Phone", a: "602-555-0144" },
+            { q: "Email", a: "pat@example.org" }, { q: "Property Manager", a: "Desert Sky Management" }, { q: "Property Manager Phone", a: "602-555-0190" },
+            { q: "Property Manager Email", a: "", }, { q: "Address", a: "200 N Sample Way, Phoenix, AZ 85018" }, { q: "Service Frequency", a: "Monthly" },
+            { q: "A/P Contact", a: "Lee Accounts" }, { q: "Email", a: "ap@example.org" }, { q: "Phone", a: "602-555-0191" },
+            { q: "W9 Required?", a: "Yes" }, { q: "COI Required?", a: "Yes" }, { q: "Gate Code", a: "#4321" }, { q: "Guard Gate Access", a: "" },
+            { q: "Controller Type", a: "Rain Bird ESP-LXME" }, { q: "Number of Controllers", a: "3" }, { q: "Number of Zones", a: "48" },
+            { q: "Living Turfgrass", a: "No" }, { q: "Landscape Maintenance", a: "Valley Green Landscaping" },
+            { q: "Goals", a: "Common area plants failing near the entrance. Board wants a landscape plan." },
+            { q: "IMAGE(s) Upload", a: "https://drive.google.com/open?id=example" }, { q: "How did you hear about us?", a: "Referral from another HOA" },
+            { q: "Consent", a: "Yes" } ] },
           { id: "i2", lead_id: "d1", source: "website", submitted_at: new Date(now).toISOString(), answers: [
             { q: "Property type", a: "Estate / Large Residential" }, { q: "Project scope", a: "Ongoing consulting" },
             { q: "Issue / project", a: "Citrus grove looks stressed after the summer. Lemons doing well, limes dropping leaves." },
@@ -142,7 +148,7 @@
         const l = { id: "d" + Date.now(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), lead_date: isoDate(new Date()),
           project_name: "", contact_name: "", company: "", email: "", phone: "", address: "", property_type: "", service: "", request: "", goals: "",
           budget: "", newsletter: null, channel: "phone", heard_about: "", stage: "new", next_steps: "", zone_quote: null, site_notes: "",
-          assigned_to: null, in_quickbooks: false, closed_reason: "", ...row };
+          assigned_to: null, in_quickbooks: false, closed_reason: "", details: {}, ...row };
         db.leads.push(l); save(); return l;
       },
       async remove(id) { db.leads = db.leads.filter((x) => x.id !== id); save(); },
@@ -170,7 +176,7 @@
     contact: { label: "Contact", val: (l) => String(l.contact_name || "").toLowerCase() },
     channel: { label: "Came in by", val: (l) => String(CHANNEL[l.channel] || l.channel).toLowerCase() },
     next: { label: "Next steps", val: (l) => String(l.next_steps || "").toLowerCase() },
-    qb: { label: "In QuickBooks", val: (l) => (l.in_quickbooks ? 1 : 0) },
+    qb: { label: "Entered in QB", val: (l) => (l.in_quickbooks ? 1 : 0) },
   };
   // Direction a column starts in when first clicked
   const FIRST_DIR = { stage: "asc", date: "desc", lead: "asc", contact: "asc", channel: "asc", next: "asc", qb: "desc" };
@@ -298,7 +304,7 @@
     if (f.person === "none" && l.assigned_to) return false;
     if (f.person && f.person !== "none" && l.assigned_to !== f.person) return false;
     if (f.q) {
-      const hay = [l.project_name, l.contact_name, l.company, l.email, l.phone, l.address, l.request, l.next_steps, l.heard_about].join(" ").toLowerCase();
+      const hay = [l.project_name, l.contact_name, l.company, l.email, l.phone, l.address, l.request, l.next_steps, l.heard_about, ...Object.values(l.details || {})].join(" ").toLowerCase();
       const words = f.q.toLowerCase().split(/\s+/).filter(Boolean);
       const qDigits = f.q.replace(/\D/g, "");
       if (!words.every((w) => hay.includes(w)) && !(qDigits.length >= 4 && String(l.phone).replace(/\D/g, "").includes(qDigits))) return false;
@@ -374,7 +380,7 @@
       $("#listOut").innerHTML = `
         <p class="small muted" style="margin:0 0 8px">${rows.length} lead${rows.length === 1 ? "" : "s"}</p>
         <div class="card table-wrap leads-table" style="padding:6px 8px">
-          <table class="leads"><thead><tr>${th("date", "Date")}${th("lead", "Lead")}${th("contact", "Contact")}${th("channel", "Came in by")}${th("stage", "Stage")}${th("next", "Next steps")}${th("qb", "QB", 'title="Added to QuickBooks"')}</tr></thead>
+          <table class="leads"><thead><tr>${th("date", "Date")}${th("lead", "Lead")}${th("contact", "Contact")}${th("channel", "Came in by")}${th("stage", "Stage")}${th("next", "Next steps")}${th("qb", "Entered in QB", 'title="Entered in QuickBooks"')}</tr></thead>
           <tbody>${rows.map((l) => `<tr data-id="${esc(l.id)}">
             <td>${esc(niceDate(l.lead_date))}</td>
             <td><div class="who">${esc(displayName(l))}</div><div class="sub">${esc(l.contact_name && l.contact_name !== displayName(l) ? l.contact_name : "")}${l.address ? `${l.contact_name && l.contact_name !== displayName(l) ? " · " : ""}${esc(l.address)}` : ""}</div></td>
@@ -389,7 +395,7 @@
             <div class="sub">${esc([l.contact_name !== displayName(l) ? l.contact_name : "", l.phone].filter(Boolean).join(" · "))}</div>
             <div class="sub">${esc(niceDate(l.lead_date))} · ${esc(CHANNEL[l.channel] || l.channel)}</div></div>${stageBadge(l.stage)}</div>
           ${l.next_steps ? `<div class="next">${esc(l.next_steps)}</div>` : ""}</div>`).join("")}</div>`;
-      $$("[data-id]", $("#listOut")).forEach((el) => (el.onclick = () => { location.hash = "lead=" + el.dataset.id; }));
+      $$("[data-id]", $("#listOut")).forEach((el) => (el.onclick = () => openCard(el.dataset.id).catch(fail)));
       $$("[data-sort]", $("#listOut")).forEach((b) => (b.onclick = () => {
         const k = b.dataset.sort;
         if (state.f.sort === k) state.f.dir = state.f.dir === "asc" ? "desc" : "asc";
@@ -500,6 +506,110 @@
       : `<input id="${id}" data-f="${id}" type="${opts.type || "text"}" value="${esc(value)}" ${opts.inputmode ? `inputmode="${opts.inputmode}"` : ""}>`;
     return `<div class="field"><label for="${id}">${label}</label><div class="copy-field">${tag}<button type="button" class="copy-btn" data-copy="${id}">Copy</button></div></div>`;
   }
+  // =====================================================================
+  // The intake form, question for question ("HHC - New Client Intake").
+  // The same fields are used whether the client filled in the form or we
+  // took the answers on a call. col: kept in its own leads column (so lists,
+  // search and QuickBooks copy use it); otherwise kept in leads.details.
+  // yn: a Yes/No question. re: how a form question is recognised.
+  // =====================================================================
+  const FORM = [
+    { title: "Client information", fields: [
+      { k: "contact_name", label: "Contact Name", col: true, copy: true, re: /^(contact |client |your |full )?name\b|first and last/ },
+      { k: "project_name", label: "Property Name", col: true, copy: true, re: /^(property|project) name/ },
+      { k: "phone", label: "Phone", col: true, copy: true, type: "tel", re: /^(phone|cell|mobile)/ },
+      { k: "email", label: "Email", col: true, copy: true, type: "email", re: /^e-?mail/ },
+      { k: "pm_name", label: "Property Manager", copy: true, re: /^property manager( name)?$/ },
+      { k: "pm_phone", label: "Property Manager Phone", copy: true, type: "tel", re: /manager.*phone/ },
+      { k: "pm_email", label: "Property Manager Email", copy: true, type: "email", re: /manager.*e-?mail/ },
+      { k: "address", label: "Address", col: true, copy: true, area: true, re: /address|location/ },
+      { k: "service", label: "Service Frequency", col: true, re: /frequency|^service|scope/ },
+    ] },
+    { title: "Billing information", fields: [
+      { k: "ap_name", label: "A/P Contact", copy: true, re: /a\/?p contact|accounts payable/ },
+      { k: "ap_email", label: "A/P Email", copy: true, type: "email", re: /^(a\/?p )?e-?mail/ },
+      { k: "ap_phone", label: "A/P Phone", copy: true, type: "tel", re: /^(a\/?p )?phone/ },
+      { k: "w9", label: "W9 Required?", yn: true, re: /w-?9/ },
+      { k: "coi", label: "COI Required?", yn: true, re: /\bcoi\b|certificate of insurance/ },
+    ] },
+    { title: "Property access and site details", fields: [
+      { k: "gate_code", label: "Gate Code", re: /gate code/ },
+      { k: "guard_gate", label: "Guard Gate Access", re: /guard gate/ },
+      { k: "security", label: "Security Protocols", re: /security/ },
+      { k: "photo_release", label: "Photo Release", yn: true, re: /photo release/ },
+      { k: "controller_type", label: "Controller Type", re: /controller type/ },
+      { k: "controllers", label: "Number of Controllers", re: /controllers/ },
+      { k: "zones", label: "Number of Zones", re: /zones/ },
+      { k: "parking", label: "Parking Instructions", re: /parking/ },
+      { k: "pets", label: "Pets / Animals on Site", re: /pets|animals/ },
+      { k: "injector", label: "Fertilizer Injector", re: /injector/ },
+      { k: "living_turf", label: "Living Turfgrass", yn: true, re: /living turf/ },
+      { k: "synthetic_turf", label: "Synthetic Turfgrass", yn: true, re: /synthetic/ },
+    ] },
+    { title: "Current and past providers", fields: [
+      { k: "landscape_architect", label: "Landscape Architect", re: /architect/ },
+      { k: "install_co", label: "Property Landscape Installation Co", re: /installation co|install(ation)? company|installer/ },
+      { k: "install_age", label: "Installation Age (Years)", re: /installation age|age \(years\)/ },
+      { k: "maintenance", label: "Landscape Maintenance", re: /maintenance/ },
+      { k: "tree_care", label: "Tree Care Provider", re: /tree care/ },
+      { k: "spray", label: "Spray/Fertilizer Service", re: /spray|fertilizer service/ },
+      { k: "irrigation_co", label: "Irrigation Company", re: /irrigation company/ },
+      { k: "irrigation_system", label: "Irrigation System and Age", re: /irrigation system/ },
+    ] },
+    { title: "Additional information", fields: [
+      { k: "goals", label: "Goals", col: true, area: true, re: /goal/ },
+      { k: "images", label: "Images", area: true, re: /image|upload|photos?$/ },
+      { k: "expectations", label: "Expectations", area: true, re: /expectation/ },
+      { k: "upcoming_events", label: "Upcoming events", re: /upcoming event/ },
+      { k: "annual_events", label: "Annual events", re: /annual event/ },
+      { k: "enhancements", label: "Upcoming property enhancements", area: true, re: /enhancement/ },
+      { k: "heard_about", label: "How did you hear about us?", col: true, re: /hear about|find us|referred/ },
+      { k: "newsletter_email", label: "Newsletter email", type: "email", re: /newsletter|sign up/ },
+      { k: "consent", label: "Consent to emails and newsletters", yn: true, re: /consent|i agree/ },
+    ] },
+  ];
+  // Things we note on the call (and the website form asks) that aren't intake questions
+  const CALL_FIELDS = [
+    { k: "request", label: "What they need", col: true, copy: true, area: true, rows: 5, re: /issue|problem|describe|concern|help with|tell us|need|message|project$/ },
+    { k: "company", label: "Company", col: true, copy: true, re: /company|business|organization/ },
+    { k: "property_type", label: "Property type", col: true, re: /property type|type of property/ },
+    { k: "budget", label: "Budget", col: true, re: /budget/ },
+    { k: "site_notes", label: "Call and site visit notes", col: true, area: true, rows: 3 },
+  ];
+  const ALL_FIELDS = [...FORM.flatMap((s) => s.fields), ...CALL_FIELDS];
+  const normQ = (q) => String(q || "").toLowerCase().replace(/\s+/g, " ").replace(/[\s?:!*.]+$/, "").trim();
+
+  // Match form answers to the fields above, in order, so the second "Email" lands on A/P Email
+  function matchAnswers(answers) {
+    const values = {}, other = [], used = new Set();
+    (answers || []).forEach((x) => {
+      const a = String(x.a == null ? "" : x.a).trim();
+      if (!a) return;
+      const q = normQ(x.q);
+      const f = ALL_FIELDS.find((f) => !used.has(f.k) && normQ(f.label) === q) ||
+        ALL_FIELDS.find((f) => !used.has(f.k) && f.re && f.re.test(q));
+      if (f) { used.add(f.k); values[f.k] = a; } else other.push({ q: x.q, a });
+    });
+    return { values, other };
+  }
+  // What the forms said, newest answer winning
+  function formValues(intakes) {
+    const values = {}, other = [];
+    [...(intakes || [])].sort((a, b) => String(a.submitted_at).localeCompare(String(b.submitted_at))).forEach((it) => {
+      const r = matchAnswers(it.answers);
+      Object.assign(values, r.values);
+      r.other.forEach((o) => other.push({ ...o, from: it }));
+    });
+    return { values, other };
+  }
+  // The value to show: what we saved, or else what the form said
+  function fieldVal(lead, f, fromForm) {
+    if (f.col) { const v = lead[f.k]; return v != null && String(v).trim() !== "" ? String(v) : fromForm[f.k] || ""; }
+    const d = lead.details || {};
+    return Object.prototype.hasOwnProperty.call(d, f.k) ? String(d[f.k] == null ? "" : d[f.k]) : fromForm[f.k] || "";
+  }
+  function srcLabel(it) { return it.source === "website" ? "Website form" : it.source === "manual" ? "Typed in" : "Intake form"; }
+
   function qbText(l) {
     return [
       ["Customer display name", l.project_name || l.contact_name],
@@ -507,36 +617,104 @@
     ].filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join("\n");
   }
   function allText(l, intakes) {
-    const lines = [
-      displayName(l), "",
-      ...[["Contact", l.contact_name], ["Company", l.company], ["Phone", l.phone], ["Email", l.email], ["Address", l.address],
-        ["Came in by", CHANNEL[l.channel]], ["Heard about us", l.heard_about], ["Date", niceDate(l.lead_date)], ["Stage", STAGE[l.stage]],
-        ["Property type", l.property_type], ["Service", l.service], ["Zone quote", l.zone_quote ? "$" + l.zone_quote : ""],
-        ["Request", l.request], ["Goals", l.goals], ["Budget", l.budget], ["Next steps", l.next_steps], ["Site notes", l.site_notes]]
-        .filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`),
-    ];
-    (intakes || []).forEach((it) => {
-      lines.push("", `${it.source === "website" ? "Website form" : "Intake form"} (${niceTime(it.submitted_at)})`);
-      (it.answers || []).forEach((x) => lines.push(`${x.q}: ${x.a}`));
+    const fv = formValues(intakes);
+    const lines = [displayName(l), "",
+      ...[["Stage", STAGE[l.stage]], ["Came in by", CHANNEL[l.channel]], ["Date", niceDate(l.lead_date)], ["Next steps", l.next_steps],
+        ["Zone quote", l.zone_quote ? "$" + l.zone_quote : ""], ["Entered in QuickBooks", l.in_quickbooks ? "Yes" : ""]]
+        .filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`)];
+    [...FORM, { title: "From the call", fields: CALL_FIELDS }].forEach((s) => {
+      const rows = s.fields.map((f) => [f.label, fieldVal(l, f, fv.values)]).filter(([, v]) => v);
+      if (rows.length) lines.push("", s.title.toUpperCase(), ...rows.map(([k, v]) => `${k}: ${v}`));
     });
+    if (fv.other.length) lines.push("", "OTHER ANSWERS", ...fv.other.map((o) => `${o.q}: ${o.a}`));
     return lines.join("\n");
+  }
+
+  // =====================================================================
+  // Lead card: a read-only view of what was filled in, with an Edit button
+  // =====================================================================
+  async function openCard(id) {
+    const [lead, intakes] = await Promise.all([S.lead(id), S.intakes(id)]);
+    const fv = formValues(intakes);
+    const row = (label, v, html) => `<div class="qa"><div class="q">${esc(label)}</div><div class="a">${html || linkify(v)}</div></div>`;
+    const person = state.people.find((p) => p.id === lead.assigned_to);
+    const stands = [
+      ["Assigned to", person ? person.full_name : ""], ["Next steps", lead.next_steps],
+      ["Zone quote", lead.zone_quote != null && lead.zone_quote !== "" ? "$" + lead.zone_quote : ""],
+      ["Why we lost it", lead.stage === "lost" ? lead.closed_reason : ""],
+    ].filter(([, v]) => v);
+    const sections = [...FORM, { title: "From the call", fields: CALL_FIELDS }].map((s) => {
+      const rows = s.fields.map((f) => [f.label, fieldVal(lead, f, fv.values)]).filter(([, v]) => v);
+      return rows.length ? `<h3>${esc(s.title)}</h3>${rows.map(([k, v]) => row(k, v)).join("")}` : "";
+    }).join("");
+    const subs = intakes.length ? `<p class="small muted" style="margin:4px 0 0">${intakes.map((it) => `${srcLabel(it)} received ${esc(niceTime(it.submitted_at))}`).join(" · ")}</p>` : "";
+    const { m, close } = modal(`
+      <div class="lc-head">
+        <div><p class="eyebrow">${esc(CHANNEL[lead.channel] || lead.channel)}${lead.lead_date ? " · " + esc(niceDate(lead.lead_date)) : ""}</p>
+          <h2 class="lc-title">${esc(displayName(lead))}</h2>
+          <div>${stageBadge(lead.stage)} ${lead.in_quickbooks ? `<span class="qb-badge">✓ Entered in QB</span>` : ""}</div>${subs}</div>
+        <button type="button" class="lc-x secondary" data-close aria-label="Close">✕</button>
+      </div>
+      <div class="quick">
+        <button type="button" id="cardEdit">Edit</button>
+        ${lead.phone ? `<a class="btn secondary" href="tel:${esc(telHref(lead.phone))}">Call</a><a class="btn secondary" href="sms:${esc(telHref(lead.phone))}">Text</a>` : ""}
+        ${lead.email ? `<a class="btn secondary" href="mailto:${esc(lead.email)}">Email</a>` : ""}
+        <button type="button" class="secondary" id="cardQB">Copy for QuickBooks</button>
+        <button type="button" class="secondary" id="cardAll">Copy everything</button>
+      </div>
+      <div class="lc-body">
+        ${stands.length ? `<h3>Where it stands</h3>${stands.map(([k, v]) => row(k, v)).join("")}` : ""}
+        ${sections || `<p class="muted">Nothing filled in yet. Click Edit to add what you learn on the call.</p>`}
+        ${fv.other.length ? `<h3>Other answers</h3>${fv.other.map((o) => row(o.q, o.a)).join("")}` : ""}
+      </div>`, true);
+    m.classList.add("lead-card-view");
+    $("[data-close]", m).onclick = close;
+    $("#cardEdit", m).onclick = () => { close(); location.hash = "lead=" + lead.id; };
+    $("#cardQB", m).onclick = (e) => copy(qbText(lead), e.target);
+    $("#cardAll", m).onclick = (e) => copy(allText(lead, intakes), e.target);
+    const esc_ = (e) => { if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc_); } };
+    document.addEventListener("keydown", esc_);
+  }
+
+  // =====================================================================
+  // Edit a lead: every intake question, filled from the form where we have it
+  // =====================================================================
+  function formInput(lead, f, fromForm) {
+    const v = fieldVal(lead, f, fromForm);
+    const attr = f.col ? `data-f="${f.k}"` : `data-d="${f.k}"`;
+    if (f.yn) {
+      const cur = /^\s*y/i.test(v) ? "Yes" : /^\s*n/i.test(v) ? "No" : v;
+      const opts = ["", "Yes", "No"].concat(cur && !["Yes", "No"].includes(cur) ? [cur] : []);
+      return `<div class="field"><label for="${f.k}">${esc(f.label)}</label><select id="${f.k}" ${attr}>${opts.map((o) => `<option value="${esc(o)}" ${o === cur ? "selected" : ""}>${o ? esc(o) : "Not answered"}</option>`).join("")}</select></div>`;
+    }
+    const tag = f.area
+      ? `<textarea id="${f.k}" ${attr} rows="${f.rows || 2}">${esc(v)}</textarea>`
+      : `<input id="${f.k}" ${attr} type="${f.type || "text"}" value="${esc(v)}" ${f.type === "tel" ? 'inputmode="tel"' : ""}>`;
+    if (!f.copy) return `<div class="field"><label for="${f.k}">${esc(f.label)}</label>${tag}</div>`;
+    return `<div class="field"><label for="${f.k}">${esc(f.label)}</label><div class="copy-field">${tag}<button type="button" class="copy-btn" data-copy="${f.k}">Copy</button></div></div>`;
   }
 
   async function renderLead(id) {
     const [l, intakes, notes] = await Promise.all([S.lead(id), S.intakes(id), S.notes(id)]);
     let lead = l;
-    const sms = /iPhone|iPad|Mac/.test(navigator.userAgent) ? "sms:" : "sms:";
+    const fv = formValues(intakes);
+    const sectionHtml = (s) => {
+      const short = s.fields.filter((f) => !f.area && !f.copy);
+      const rest = s.fields.filter((f) => f.area || f.copy);
+      return `<h3 class="form-h">${esc(s.title)}</h3>${rest.map((f) => formInput(lead, f, fv.values)).join("")}
+        ${short.length ? `<div class="grid2">${short.map((f) => formInput(lead, f, fv.values)).join("")}</div>` : ""}`;
+    };
     $("#view").innerHTML = `
       <p style="margin:0 0 10px"><a href="#" id="backLink">← All leads</a></p>
       <div class="lead-head">
-        <div><p class="eyebrow">${esc(CHANNEL[lead.channel] || lead.channel)}${lead.lead_date ? " · " + esc(niceDate(lead.lead_date)) : ""}</p>
+        <div><p class="eyebrow">Editing · ${esc(CHANNEL[lead.channel] || lead.channel)}${lead.lead_date ? " · " + esc(niceDate(lead.lead_date)) : ""}</p>
           <h1 id="leadTitle">${esc(displayName(lead))}</h1>
           <div>${stageBadge(lead.stage)} <span class="saved-note" id="savedNote"></span></div></div>
       </div>
       <div class="quick">
-        ${lead.phone ? `<a class="btn" href="tel:${esc(telHref(lead.phone))}">Call</a><a class="btn secondary" href="${sms}${esc(telHref(lead.phone))}">Text</a>` : ""}
+        ${lead.phone ? `<a class="btn" href="tel:${esc(telHref(lead.phone))}">Call</a><a class="btn secondary" href="sms:${esc(telHref(lead.phone))}">Text</a>` : ""}
         ${lead.email ? `<a class="btn secondary" href="mailto:${esc(lead.email)}">Email</a>` : ""}
-        <button type="button" class="secondary" id="copyContact">Copy contact</button>
+        <button type="button" class="secondary" id="viewCard">View card</button>
         <button type="button" class="secondary" id="copyQB">Copy for QuickBooks</button>
         <button type="button" class="secondary" id="copyAll">Copy everything</button>
       </div>
@@ -549,62 +727,67 @@
             </div>
             <div class="field"><label for="next_steps">Next steps</label><textarea id="next_steps" data-f="next_steps" rows="2">${esc(lead.next_steps)}</textarea></div>
             <div class="grid2">
-              <div class="field"><label for="zone_quote">Zone quote ($)</label><input id="zone_quote" data-f="zone_quote" type="number" inputmode="decimal" step="any" value="${lead.zone_quote == null ? "" : esc(lead.zone_quote)}"></div>
+              <div class="field"><label for="channel">Came in by</label><select id="channel" data-f="channel">${CHANNELS.map(([k, v]) => `<option value="${k}" ${lead.channel === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
               <div class="field"><label for="lead_date">Date it came in</label><input id="lead_date" data-f="lead_date" type="date" value="${esc(lead.lead_date || "")}"></div>
             </div>
-            <label class="check"><input type="checkbox" id="in_quickbooks" data-f="in_quickbooks" ${lead.in_quickbooks ? "checked" : ""}> Added to QuickBooks</label>
-            <div class="field ${lead.stage === "lost" ? "" : "hidden"}" id="lostWrap" style="margin-top:12px"><label for="closed_reason">Why we lost it</label><input id="closed_reason" data-f="closed_reason" value="${esc(lead.closed_reason)}"></div>
-          </div>
-          <div class="card"><h2>Contact</h2>
-            ${copyField("contact_name", "Name", lead.contact_name)}
-            ${copyField("project_name", "Project or property name", lead.project_name)}
-            ${copyField("company", "Company", lead.company)}
-            <div class="grid2">${copyField("phone", "Phone", lead.phone, { type: "tel" })}${copyField("email", "Email", lead.email, { type: "email" })}</div>
-            ${copyField("address", "Address", lead.address, { area: true, rows: 2 })}
             <div class="grid2">
-              <div class="field"><label for="channel">Came in by</label><select id="channel" data-f="channel">${CHANNELS.map(([k, v]) => `<option value="${k}" ${lead.channel === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
-              <div class="field"><label for="heard_about">Heard about us / referred by</label><input id="heard_about" data-f="heard_about" value="${esc(lead.heard_about)}"></div>
+              <div class="field"><label for="zone_quote">Zone quote ($)</label><input id="zone_quote" data-f="zone_quote" type="number" inputmode="decimal" step="any" value="${lead.zone_quote == null ? "" : esc(lead.zone_quote)}"></div>
+              <div class="field"><label>&nbsp;</label><label class="check qb-check"><input type="checkbox" id="in_quickbooks" data-f="in_quickbooks" ${lead.in_quickbooks ? "checked" : ""}> Entered in QuickBooks ✓</label></div>
             </div>
+            <div class="field ${lead.stage === "lost" ? "" : "hidden"}" id="lostWrap"><label for="closed_reason">Why we lost it</label><input id="closed_reason" data-f="closed_reason" value="${esc(lead.closed_reason)}"></div>
           </div>
-          <div class="card"><h2>What they need</h2>
-            <div class="grid2">
-              <div class="field"><label for="property_type">Property type</label><input id="property_type" data-f="property_type" value="${esc(lead.property_type)}"></div>
-              <div class="field"><label for="service">Service</label><input id="service" data-f="service" value="${esc(lead.service)}" placeholder="Diagnostic, Oversight, Ongoing consulting"></div>
-            </div>
-            ${copyField("request", "Request", lead.request, { area: true, rows: 5 })}
-            <div class="field"><label for="goals">Goals</label><textarea id="goals" data-f="goals" rows="2">${esc(lead.goals)}</textarea></div>
-            <div class="field"><label for="budget">Budget</label><input id="budget" data-f="budget" value="${esc(lead.budget)}"></div>
-            <div class="field"><label for="site_notes">Call and site visit notes</label><textarea id="site_notes" data-f="site_notes" rows="3">${esc(lead.site_notes)}</textarea></div>
+          <div class="card"><h2>Intake form</h2>
+            <p class="small muted" style="margin-top:0">The same questions as the client intake form. Answers from the client's form fill in here on their own, and anything you change is saved as you go.</p>
+            ${FORM.map(sectionHtml).join("")}
           </div>
         </div>
         <div>
-          <div class="card"><h2>Intake answers</h2>
-            ${intakes.length ? intakes.map((it) => `
-              <div class="intake-meta">${it.source === "website" ? "Website form" : it.source === "manual" ? "Typed in" : "Intake form"} · ${esc(niceTime(it.submitted_at))}</div>
-              ${(it.answers || []).filter((x) => String(x.a || "").trim()).map((x) => `<div class="qa"><div class="q">${esc(x.q)}</div><div class="a">${linkify(x.a)}</div></div>`).join("")}`).join("")
-              : `<p class="muted small">No intake form yet. When they fill in the intake form with this email or phone number, their answers show up here and the stage moves to Intake received.</p>`}
+          <div class="card"><h2>From the call</h2>
+            ${CALL_FIELDS.map((f) => formInput(lead, f, fv.values)).join("")}
           </div>
           <div class="card"><h2>Notes and history</h2>
             <div class="field"><textarea id="newNote" rows="2" placeholder="Add a note: left a message, sent intake form, booked for Tuesday…"></textarea></div>
             <button type="button" id="addNoteBtn" class="small">Add note</button>
             <div id="notesOut" style="margin-top:10px">${notesHtml(notes)}</div>
           </div>
+          ${intakes.length ? `<div class="card"><details><summary><strong>Original form submissions (${intakes.length})</strong></summary>
+            ${intakes.map((it) => `<div class="intake-meta">${srcLabel(it)} · ${esc(niceTime(it.submitted_at))}</div>
+              ${(it.answers || []).filter((x) => String(x.a || "").trim()).map((x) => `<div class="qa"><div class="q">${esc(x.q)}</div><div class="a">${linkify(x.a)}</div></div>`).join("")}`).join("")}
+          </details></div>` : ""}
           ${isAdmin() ? `<p style="text-align:right"><button type="button" class="danger small" id="delBtn">Delete this lead</button></p>` : ""}
         </div>
       </div>`;
 
     $("#backLink").onclick = (e) => { e.preventDefault(); location.hash = ""; };
+    $("#viewCard").onclick = () => openCard(lead.id).catch(fail);
     $$("[data-copy]").forEach((b) => (b.onclick = () => copy($("#" + b.dataset.copy).value, b)));
-    $("#copyContact").onclick = (e) => copy([lead.contact_name, lead.company, lead.phone, lead.email, lead.address].filter(Boolean).join("\n"), e.target);
     $("#copyQB").onclick = (e) => copy(qbText(lead), e.target);
     $("#copyAll").onclick = (e) => copy(allText(lead, intakes), e.target);
 
     // Save each field as soon as it changes
     let pending = Promise.resolve();
     addressLookup($("#address"));
+    const saveField = (el, patchFor) => {
+      $("#savedNote").textContent = "Saving…";
+      pending = pending.then(async () => {
+        lead = await S.update(lead.id, patchFor());
+        $("#savedNote").textContent = "Saved";
+        return lead;
+      });
+      return pending;
+    };
+    $$("[data-d]").forEach((el) => el.addEventListener("change", () => {
+      const k = el.dataset.d;
+      let v = el.value.trim();
+      if (el.type === "email") {
+        v = v.toLowerCase();
+        el.classList.toggle("invalid", !EMAIL_OK(v));
+        if (!EMAIL_OK(v)) { $("#savedNote").textContent = "Not saved: " + BAD_EMAIL; return; }
+      }
+      saveField(el, () => ({ details: { ...(lead.details || {}), [k]: v } })).catch((e) => { $("#savedNote").textContent = ""; fail(e); });
+    }));
     $$("[data-f]").forEach((el) => {
-      const ev = el.tagName === "SELECT" || el.type === "checkbox" || el.type === "date" ? "change" : "change";
-      el.addEventListener(ev, () => {
+      el.addEventListener("change", () => {
         const k = el.dataset.f;
         let v = el.type === "checkbox" ? el.checked : el.value;
         if (k === "zone_quote") v = v === "" ? null : Number(v);
@@ -614,10 +797,7 @@
           el.classList.toggle("invalid", !EMAIL_OK(v));
           if (!EMAIL_OK(v)) { $("#savedNote").textContent = "Not saved: " + BAD_EMAIL; return; }
         }
-        $("#savedNote").textContent = "Saving…";
-        pending = pending.then(async () => {
-          lead = await S.update(lead.id, { [k]: v });
-          $("#savedNote").textContent = "Saved";
+        saveField(el, () => ({ [k]: v })).then(async () => {
           if (k === "stage") {
             $(".lead-head .stage").outerHTML = stageBadge(lead.stage);
             $("#lostWrap").classList.toggle("hidden", lead.stage !== "lost");
@@ -741,7 +921,7 @@
       ["Came in by", 14, (l) => CHANNEL[l.channel] || l.channel], ["Heard about us", 18, (l) => l.heard_about], ["Stage", 20, (l) => STAGE[l.stage] || l.stage],
       ["Assigned to", 18, (l) => personName(l.assigned_to)], ["Zone quote", 12, (l) => l.zone_quote == null ? "" : Number(l.zone_quote)],
       ["Next steps", 34, (l) => l.next_steps], ["Service", 18, (l) => l.service], ["Request", 60, (l) => l.request],
-      ["In QuickBooks", 13, (l) => (l.in_quickbooks ? "Yes" : "")],
+      ["Entered in QuickBooks", 20, (l) => (l.in_quickbooks ? "✓ Yes" : "")],
     ];
     ws.columns = cols.map(([, w]) => ({ width: w }));
     ws.mergeCells(1, 1, 1, cols.length);
