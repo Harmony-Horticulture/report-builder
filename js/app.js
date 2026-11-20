@@ -164,8 +164,10 @@
       (n.admin && !items[i - 1].admin ? `<div class="nav-label">Admin</div>` : "") + `<button type="button" data-route="${n.route}">${n.label}</button>`).join("");
     // Link over to the Time Tracker, for every role
     const tt = esc((window.HH_CONFIG && window.HH_CONFIG.TIME_TRACKER_URL) || "https://harmony-horticulture.github.io/time-tracker/");
-    $("#sideNav").innerHTML += `<div class="nav-label">Apps</div><a class="nav-link" href="${tt}">Time tracker ↗</a>`;
-    $("#bottomNav").innerHTML = items.map((n) => `<button type="button" data-route="${n.route}">${n.label}</button>`).join("") + `<a class="nav-link" href="${tt}">Time</a>`;
+    // Leads page (admins; the database only shows others the leads assigned to them)
+    const leadsLink = isAdmin() ? `<a class="nav-link" href="leads.html">Leads</a>` : "";
+    $("#sideNav").innerHTML += `<div class="nav-label">Apps</div>${leadsLink}<a class="nav-link" href="${tt}">Time tracker ↗</a>`;
+    $("#bottomNav").innerHTML = items.map((n) => `<button type="button" data-route="${n.route}">${n.label}</button>`).join("") + (isAdmin() ? `<a class="nav-link" href="leads.html">Leads</a>` : "") + `<a class="nav-link" href="${tt}">Time</a>`;
     $$("[data-route]").forEach((b) => (b.onclick = () => go(b.dataset.route)));
   }
   function setActive(route) {

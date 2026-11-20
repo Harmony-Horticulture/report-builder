@@ -33,6 +33,10 @@ This app is separate from the Time Tracker (its own code and its own web address
 - Turn AI polish on or off, keep the dictation word list, and add or change report types and their sections without a developer (Settings, RC-08)
 - Sent reports are locked. Editing one makes a new version that has to be sent again, a PDF of every sent version is kept, and the send history shows who sent which version to whom and when (RC-25, RC-28)
 
+## Leads
+
+The **Leads** page (`leads.html`, linked from the menu for admins) keeps every new lead in one place: calls, texts and emails added with **+ Add a lead**, plus the website contact form and the New Client Intake form, which arrive on their own and match to existing leads by email or phone. Each lead moves through stages (New, Contacted, Waiting on intake form, Intake received, Site visit scheduled, Proposal sent, Won, Lost) and shows the full intake answers, notes and history. Every field has a Copy button, **Copy for QuickBooks** copies the customer details in one go, and **Export to Excel** downloads a branded spreadsheet. Slack gets a message for each new lead or intake form. **Setting it up:** [docs/LEADS.md](docs/LEADS.md).
+
 ## How it's built
 
 - Plain HTML, CSS and JavaScript with no build step. GitHub Pages serves the files as they are.
@@ -52,7 +56,10 @@ This app is separate from the Time Tracker (its own code and its own web address
 | `js/exports.js` | Word and PDF files |
 | `supabase/00_shared_login_and_clients.sql` | Sign-in and client tables. Only if this app has its own Supabase project |
 | `supabase/01_reports.sql` | Report tables, security rules, photo storage and the two starting report types |
-| `supabase/functions/` | The email and AI polish helpers |
+| `supabase/functions/` | The email and AI polish helpers, and `leads-inbox` for incoming leads |
+| `leads.html`, `js/leads.js`, `css/leads.css` | The Leads page |
+| `supabase/02_leads.sql` | Lead tables and security rules |
+| `integrations/google-form-intake.gs` | Sends each intake form answer to the Leads page |
 
 ## Still open
 
