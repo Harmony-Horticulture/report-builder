@@ -62,6 +62,16 @@
       async update(id, patch) { return ok(await sb.from("leads").update(patch).eq("id", id).select("*").single()); },
       async add(row) { return ok(await sb.from("leads").insert({ ...row, created_by: meCache && meCache.id }).select("*").single()); },
       async remove(id) { ok(await sb.from("leads").delete().eq("id", id)); },
+      async uploadLeadPhoto(leadId, blob) {
+        const path = `${leadId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+        ok(await sb.storage.from("lead-photos").upload(path, blob, { contentType: "image/jpeg", upsert: false }));
+        return path;
+      },
+      async leadPhotoUrl(path) {
+        const { data, error } = await sb.storage.from("lead-photos").download(path);
+        return error ? "" : URL.createObjectURL(data);
+      },
+      async removeLeadPhotos(paths) { if (paths.length) await sb.storage.from("lead-photos").remove(paths); },
       async addNote(lead_id, body) {
         return ok(await sb.from("lead_notes").insert({ lead_id, body, author_id: meCache.id, author_name: meCache.full_name || meCache.email }).select("*").single());
       },
@@ -152,6 +162,10 @@
         db.leads.push(l); save(); return l;
       },
       async remove(id) { db.leads = db.leads.filter((x) => x.id !== id); save(); },
+      // Demo photos live in this browser as small data links
+      async uploadLeadPhoto(leadId, blob) { return await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(blob); }); },
+      async leadPhotoUrl(path) { return path; },
+      async removeLeadPhotos() {},
       async addNote(lead_id, body) { const n = { id: Date.now(), lead_id, body, created_at: new Date().toISOString(), author_name: me.full_name, automatic: false }; db.notes.push(n); save(); return n; },
       async notify() { return { ok: true, slack: "demo" }; },
     };
@@ -220,6 +234,8 @@
     return new Date(y, m - 1, dd).toLocaleDateString("en-US", { month: "short", day: "numeric", year: y === new Date().getFullYear() ? undefined : "numeric" });
   };
   const niceTime = (ts) => new Date(ts).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const stagePick = (l) => `<select class="stage-pick stage ${esc(l.stage)}" data-of="${esc(l.id)}" aria-label="Stage for ${esc(displayName(l))}">${STAGES.map(([k, v]) => `<option value="${k}" ${l.stage === k ? "selected" : ""}>${esc(v)}</option>`).join("")}</select>`;
+  const qbTick = (l) => `<button type="button" class="qb-tick ${l.in_quickbooks ? "on" : ""}" data-of="${esc(l.id)}" aria-pressed="${l.in_quickbooks ? "true" : "false"}" title="Entered in QuickBooks: click to change">${l.in_quickbooks ? "✓" : ""}</button>`;
   const stageBadge = (s) => `<span class="stage ${esc(s)}">${esc(STAGE[s] || s)}</span>`;
   const telHref = (p) => String(p || "").replace(/[^\d+]/g, "");
   const linkify = (t) => esc(t).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u.includes("drive.google.com") ? "Open file in Google Drive" : u}</a>`);
@@ -318,13 +334,17 @@
     const L = state.leads;
     const monthStart = isoDate(new Date()).slice(0, 7);
     const count = (fn) => L.filter(fn).length;
-    const stats = [
+    const statList = () => [
       ["new", "New", "Need a first call", count((l) => l.stage === "new"), "pink"],
       ["intake_sent", "Waiting on intake", "Form sent, not back", count((l) => l.stage === "intake_sent"), ""],
       ["intake_received", "Ready to schedule", "Intake in, no visit yet", count((l) => l.stage === "intake_received"), "green"],
       ["proposal_sent", "Proposal sent", "Waiting on a yes", count((l) => l.stage === "proposal_sent"), "brown"],
       ["won", "Won this month", "", count((l) => l.stage === "won" && l.won_at && isoDate(new Date(l.won_at)).slice(0, 7) === monthStart), "green"],
     ];
+    const statsHtml = () => statList().map(([k, label, sub, n, color]) => `
+        <button type="button" class="stat clickable ${color} ${state.f.stage === k ? "on" : ""}" data-stat="${k}">
+          <div class="label">${label}</div><div class="num">${n}</div>${sub ? `<div class="sub">${sub}</div>` : ""}
+        </button>`).join("");
     const f = state.f;
     $("#view").innerHTML = `
       <div class="page-head">
@@ -334,11 +354,7 @@
           <button type="button" id="addBtn">+ Add a lead</button>
         </div>
       </div>
-      <div class="stat-row">${stats.map(([k, label, sub, n, color]) => `
-        <button type="button" class="stat clickable ${color} ${f.stage === k ? "on" : ""}" data-stat="${k}">
-          <div class="label">${label}</div><div class="num">${n}</div>${sub ? `<div class="sub">${sub}</div>` : ""}
-        </button>`).join("")}
-      </div>
+      <div class="stat-row" id="statRow">${statsHtml()}</div>
       <div class="card" style="padding-bottom:12px">
         <div class="lead-filters">
           <div class="wide"><label for="fq">Search leads</label><input id="fq" type="search" placeholder="Search by name, phone, email, address or notes" value="${esc(f.q)}"></div>
@@ -387,16 +403,45 @@
             <td><div class="who">${esc(displayName(l))}</div><div class="sub">${esc(l.contact_name && l.contact_name !== displayName(l) ? l.contact_name : "")}${l.address ? `${l.contact_name && l.contact_name !== displayName(l) ? " · " : ""}${esc(l.address)}` : ""}</div></td>
             <td><div>${esc(l.phone)}</div><div class="sub">${esc(l.email)}</div></td>
             <td>${esc(CHANNEL[l.channel] || l.channel)}${l.heard_about ? `<div class="sub">${esc(l.heard_about)}</div>` : ""}</td>
-            <td>${stageBadge(l.stage)}${l.assigned_to ? `<div class="sub">${esc(personName(l.assigned_to))}</div>` : ""}</td>
+            <td>${stagePick(l)}${l.assigned_to ? `<div class="sub">${esc(personName(l.assigned_to))}</div>` : ""}</td>
             <td class="next">${esc(l.next_steps)}</td>
-            <td class="qb">${l.in_quickbooks ? "✓" : ""}</td></tr>`).join("")}</tbody></table>
+            <td class="qb">${qbTick(l)}</td></tr>`).join("")}</tbody></table>
         </div>
         <div class="lead-cards">${rows.map((l) => `<div class="lead-card" data-id="${esc(l.id)}">
           <div class="top"><div><div class="who">${esc(displayName(l))}</div>
             <div class="sub">${esc([l.contact_name !== displayName(l) ? l.contact_name : "", l.phone].filter(Boolean).join(" · "))}</div>
-            <div class="sub">${esc(niceDate(l.lead_date))} · ${esc(CHANNEL[l.channel] || l.channel)}</div></div>${stageBadge(l.stage)}</div>
-          ${l.next_steps ? `<div class="next">${esc(l.next_steps)}</div>` : ""}</div>`).join("")}</div>`;
-      $$("[data-id]", $("#listOut")).forEach((el) => (el.onclick = () => openCard(el.dataset.id).catch(fail)));
+            <div class="sub">${esc(niceDate(l.lead_date))} · ${esc(CHANNEL[l.channel] || l.channel)}</div></div>${stagePick(l)}</div>
+          ${l.next_steps ? `<div class="next">${esc(l.next_steps)}</div>` : ""}
+          <div class="card-qb">${qbTick(l)} <span class="small muted">Entered in QB</span></div></div>`).join("")}</div>`;
+      $$("[data-id]", $("#listOut")).forEach((el) => (el.onclick = (e) => {
+        if (e.target.closest(".stage-pick, .qb-tick")) return; // quick edits don't open the card
+        openCard(el.dataset.id).catch(fail);
+      }));
+      // Quick edits right in the list: stage and Entered in QB
+      const quickSave = async (id, patch, el) => {
+        const l = L.find((x) => x.id === id);
+        try {
+          const saved = await S.update(id, patch);
+          Object.assign(l, saved);
+          $("#statRow").innerHTML = statsHtml();
+          bindStats();
+          toast("Saved");
+        } catch (e) { fail(e); draw(); }
+      };
+      $$(".stage-pick", $("#listOut")).forEach((sel) => {
+        sel.onclick = (e) => e.stopPropagation();
+        sel.onchange = () => {
+          const v = sel.value;
+          $$(`.stage-pick[data-of="${sel.dataset.of}"]`, $("#listOut")).forEach((x) => { x.value = v; x.className = "stage-pick stage " + v; });
+          quickSave(sel.dataset.of, { stage: v });
+        };
+      });
+      $$(".qb-tick", $("#listOut")).forEach((b) => (b.onclick = (e) => {
+        e.stopPropagation();
+        const on = b.getAttribute("aria-pressed") !== "true";
+        $$(`.qb-tick[data-of="${b.dataset.of}"]`, $("#listOut")).forEach((x) => { x.setAttribute("aria-pressed", on); x.classList.toggle("on", on); x.textContent = on ? "✓" : ""; });
+        quickSave(b.dataset.of, { in_quickbooks: on });
+      }));
       $$("[data-sort]", $("#listOut")).forEach((b) => (b.onclick = () => {
         const k = b.dataset.sort;
         if (state.f.sort === k) state.f.dir = state.f.dir === "asc" ? "desc" : "asc";
@@ -415,11 +460,14 @@
     $("#fc").onchange = (e) => { state.f.channel = e.target.value; draw(); };
     $("#fp").onchange = (e) => { state.f.person = e.target.value; draw(); };
     $("#fo").onchange = (e) => { state.f.sort = e.target.value; state.f.dir = FIRST_DIR[e.target.value] || "asc"; draw(); };
-    $$("[data-stat]").forEach((b) => (b.onclick = () => {
-      state.f.stage = state.f.stage === b.dataset.stat ? "all" : b.dataset.stat;
-      $("#fs").value = state.f.stage;
-      draw();
-    }));
+    function bindStats() {
+      $$("[data-stat]").forEach((b) => (b.onclick = () => {
+        state.f.stage = state.f.stage === b.dataset.stat ? "all" : b.dataset.stat;
+        $("#fs").value = state.f.stage;
+        draw();
+      }));
+    }
+    bindStats();
     $("#addBtn").onclick = () => openAdd();
     $("#exportBtn").onclick = () => exportExcel(L.filter(matches)).catch(fail);
   }
@@ -559,12 +607,12 @@
     ] },
     { title: "Additional information", fields: [
       { k: "goals", label: "Goals", col: true, area: true, re: /goal/ },
-      { k: "images", label: "IMAGE(s) Upload", area: true, re: /image|upload|photos?$/ },
+      { k: "images", label: "IMAGE(s) Upload", photos: true, re: /image|upload|photos?$/ },
       { k: "expectations", label: "Expectations", area: true, re: /expectation/ },
       { k: "upcoming_events", label: "Upcoming events", re: /upcoming event/ },
       { k: "annual_events", label: "Annual events", re: /annual event/ },
       { k: "enhancements", label: "Upcoming property enhancements", area: true, re: /enhancement/ },
-      { k: "heard_about", label: "How did you hear about us?", col: true, re: /hear about|find us|referred/ },
+      { k: "heard_about", label: "How did you hear about us?", col: true, heard: true, re: /hear about|find us|referred/ },
       { k: "newsletter_email", label: "Sign up for our Newsletter!", type: "email", re: /newsletter|sign up/ },
       { k: "consent", label: "Consent (emails and newsletters)", yn: true, re: /consent|i agree/ },
     ] },
@@ -579,6 +627,63 @@
   ];
   const ALL_FIELDS = [...FORM.flatMap((s) => s.fields), ...CALL_FIELDS];
   const normQ = (q) => String(q || "").toLowerCase().replace(/\s+/g, " ").replace(/[\s?:!*.]+$/, "").trim();
+
+
+  // "How did you hear about us?" choices. A person's referral asks for their name.
+  const HEARD = ["Google search", "Instagram", "Facebook", "Nextdoor", "Yelp", "Our website", "Saw our truck or a job site", "Event or class", "Referral from a person", "Other"];
+  function splitHeard(v) {
+    v = String(v || "").trim();
+    if (!v) return { pick: "", more: "" };
+    const exact = HEARD.find((o) => o.toLowerCase() === v.toLowerCase());
+    if (exact && exact !== "Referral from a person" && exact !== "Other") return { pick: exact, more: "" };
+    const ref = v.match(/^(referral( from a person)?|referred( by)?)\s*[:\-–]?\s*(.*)$/i);
+    if (ref) return { pick: "Referral from a person", more: (ref[4] || "").replace(/^(from|by)\s+/i, "") };
+    if (/^google/i.test(v)) return { pick: "Google search", more: "" };
+    const oth = v.match(/^other\s*[:\-–]?\s*(.*)$/i);
+    return { pick: "Other", more: oth ? oth[1] : v };
+  }
+  const joinHeard = (pick, more) => pick === "Referral from a person" ? (more ? `Referral: ${more}` : "Referral") : pick === "Other" ? (more ? `Other: ${more}` : "Other") : pick;
+  function wireHeard(root) {
+    const pick = $("#heard_about_pick", root), more = $("#heard_about_more", root), out = $("#heard_about", root);
+    if (!pick) return;
+    const sync = (fire) => {
+      const needs = pick.value === "Referral from a person" || pick.value === "Other";
+      more.classList.toggle("hidden", !needs);
+      more.placeholder = pick.value === "Other" ? "Where did they hear about us?" : "Who referred them? Their name";
+      const v = joinHeard(pick.value, more.value.trim());
+      if (fire && out.value !== v) { out.value = v; out.dispatchEvent(new Event("change", { bubbles: true })); }
+    };
+    pick.onchange = () => { sync(true); if (!more.classList.contains("hidden")) more.focus(); };
+    more.onchange = () => sync(true);
+    sync(false);
+  }
+
+  // Photos: shrink to a sensible size, then keep them with the lead
+  async function shrinkPhoto(file) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = () => reject(new Error(`${file.name} isn't a photo this browser can open. iPhone (HEIC) photos: share them as JPEG first.`));
+        i.src = url;
+      });
+      const MAX = 1600;
+      const k = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      const g = c.getContext("2d");
+      g.fillStyle = "#FFFFFF"; g.fillRect(0, 0, w, h);
+      g.drawImage(img, 0, 0, w, h);
+      return await new Promise((resolve) => c.toBlob(resolve, "image/jpeg", 0.82));
+    } finally { URL.revokeObjectURL(url); }
+  }
+  const MAX_PHOTOS = 10;
+  async function thumbsHtml(photos, removable) {
+    const urls = await Promise.all((photos || []).map((ph) => S.leadPhotoUrl(ph.path).catch(() => "")));
+    return (photos || []).map((ph, i) => urls[i] ? `<div class="thumb"><a href="${esc(urls[i])}" target="_blank" rel="noopener"><img src="${esc(urls[i])}" alt="${esc(ph.name || "Photo")}"></a>${removable ? `<button type="button" class="thumb-x" data-rm="${i}" aria-label="Remove photo">✕</button>` : ""}</div>` : "").join("");
+  }
 
   // Match form answers to the fields above, in order, so the second "Email" lands on A/P Email
   function matchAnswers(answers) {
@@ -644,9 +749,10 @@
       ["Zone quote", lead.zone_quote != null && lead.zone_quote !== "" ? "$" + lead.zone_quote : ""],
       ["Why we lost it", lead.stage === "lost" ? lead.closed_reason : ""],
     ].filter(([, v]) => v);
+    const photos = (lead.details || {}).photos || [];
     const sections = [...FORM, { title: "From the call", fields: CALL_FIELDS }].map((s) => {
-      const rows = s.fields.map((f) => [f.label, fieldVal(lead, f, fv.values)]).filter(([, v]) => v);
-      return rows.length ? `<h3>${esc(s.title)}</h3>${rows.map(([k, v]) => row(k, v)).join("")}` : "";
+      const rows = s.fields.map((f) => [f.label, fieldVal(lead, f, fv.values), f]).filter(([, v, f]) => v || (f.photos && photos.length));
+      return rows.length ? `<h3>${esc(s.title)}</h3>${rows.map(([k, v, f]) => f.photos ? row(k, "", `${v ? `<div>${linkify(v)}</div>` : ""}<div class="thumbs" id="cardThumbs"></div>`) : row(k, v)).join("")}` : "";
     }).join("");
     const subs = intakes.length ? `<p class="small muted" style="margin:4px 0 0">${intakes.map((it) => `${srcLabel(it)} received ${esc(niceTime(it.submitted_at))}`).join(" · ")}</p>` : "";
     const { m, close } = modal(`
@@ -669,6 +775,7 @@
         ${fv.other.length ? `<h3>Other answers</h3>${fv.other.map((o) => row(o.q, o.a)).join("")}` : ""}
       </div>`, true);
     m.classList.add("lead-card-view");
+    if (photos.length && $("#cardThumbs", m)) thumbsHtml(photos, false).then((h) => { if ($("#cardThumbs", m)) $("#cardThumbs", m).innerHTML = h; });
     $("[data-close]", m).onclick = close;
     $("#cardEdit", m).onclick = () => { close(); location.hash = "lead=" + lead.id; };
     $("#cardQB", m).onclick = (e) => copy(qbText(lead), e.target);
@@ -682,6 +789,21 @@
   // =====================================================================
   function formInput(lead, f, fromForm) {
     const v = fieldVal(lead, f, fromForm);
+    if (f.photos) {
+      const n = ((lead.details || {}).photos || []).length;
+      return `<div class="field photo-field-wrap"><label>${esc(f.label)}</label>
+        ${v ? `<div class="form-links small">From the form: ${linkify(v)}</div>` : ""}
+        <div class="thumbs" id="thumbs"></div>
+        <label class="btn secondary photo-add">Add photos<input type="file" id="photoInput" accept="image/*" multiple hidden></label>
+        <span class="small muted" id="photoCount">${n ? `${n} of ${MAX_PHOTOS}` : `Up to ${MAX_PHOTOS} photos`}</span></div>`;
+    }
+    if (f.heard) {
+      const h = splitHeard(v);
+      return `<div class="field"><label for="heard_about_pick">${esc(f.label)}</label>
+        <select id="heard_about_pick"><option value="">Not answered</option>${HEARD.map((o) => `<option ${o === h.pick ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>
+        <input id="heard_about_more" class="hidden" style="margin-top:8px" value="${esc(h.more)}" autocomplete="off">
+        <input type="hidden" id="heard_about" data-f="heard_about" value="${esc(v)}"></div>`;
+    }
     const attr = f.col ? `data-f="${f.k}"` : `data-d="${f.k}"`;
     if (f.yn || f.options) {
       const choices = f.options || ["Yes", "No"];
@@ -704,7 +826,7 @@
       // Keep the form's order; short answers two to a row, long answers full width
       const parts = []; let run = [];
       const flush = () => { if (run.length) parts.push(`<div class="grid2">${run.join("")}</div>`); run = []; };
-      s.fields.forEach((f) => { const h = formInput(lead, f, fv.values); if (f.area) { flush(); parts.push(h); } else run.push(h); });
+      s.fields.forEach((f) => { const h = formInput(lead, f, fv.values); if (f.area || f.photos) { flush(); parts.push(h); } else run.push(h); });
       flush();
       return `<h3 class="form-h">${esc(s.title)}</h3>${parts.join("")}`;
     };
@@ -771,6 +893,38 @@
     // Save each field as soon as it changes
     let pending = Promise.resolve();
     addressLookup($("#address"));
+    wireHeard($("#view"));
+    // Photos: upload as soon as they're picked
+    const photosNow = () => ((lead.details || {}).photos || []).slice();
+    const drawThumbs = async () => {
+      $("#thumbs").innerHTML = await thumbsHtml(photosNow(), true);
+      const n = photosNow().length;
+      $("#photoCount").textContent = n ? `${n} of ${MAX_PHOTOS}` : `Up to ${MAX_PHOTOS} photos`;
+      $$("[data-rm]", $("#thumbs")).forEach((b) => (b.onclick = async () => {
+        const list = photosNow(); const [gone] = list.splice(Number(b.dataset.rm), 1);
+        try {
+          lead = await S.update(lead.id, { details: { ...(lead.details || {}), photos: list } });
+          S.removeLeadPhotos([gone.path]).catch(() => {});
+          drawThumbs(); toast("Photo removed");
+        } catch (e) { fail(e); }
+      }));
+    };
+    if ($("#photoInput")) {
+      drawThumbs();
+      $("#photoInput").onchange = async (e) => {
+        const files = [...e.target.files].slice(0, Math.max(0, MAX_PHOTOS - photosNow().length));
+        e.target.value = "";
+        if (!files.length) return toast(`That's the most photos (${MAX_PHOTOS}) for one lead.`, true);
+        $("#savedNote").textContent = "Uploading photos…";
+        try {
+          const added = [];
+          for (const file of files) added.push({ path: await S.uploadLeadPhoto(lead.id, await shrinkPhoto(file)), name: file.name });
+          lead = await S.update(lead.id, { details: { ...(lead.details || {}), photos: [...photosNow(), ...added] } });
+          $("#savedNote").textContent = "Saved";
+          drawThumbs();
+        } catch (ex) { $("#savedNote").textContent = ""; fail(ex); }
+      };
+    }
     const saveField = (el, patchFor) => {
       $("#savedNote").textContent = "Saving…";
       pending = pending.then(async () => {
@@ -824,7 +978,7 @@
       const { m, close } = modal(`<h2>Delete this lead?</h2><p>${esc(displayName(lead))} and its intake answers and notes will be removed. This can't be undone. To keep it on record, set the stage to Lost instead.</p>
         <div class="btn-row" style="justify-content:flex-end"><button class="secondary" data-no>Cancel</button><button class="danger" data-yes>Delete</button></div>`);
       $("[data-no]", m).onclick = close;
-      $("[data-yes]", m).onclick = async () => { try { await S.remove(lead.id); close(); toast("Lead deleted"); location.hash = ""; } catch (e) { fail(e); } };
+      $("[data-yes]", m).onclick = async () => { try { const paths = ((lead.details || {}).photos || []).map((x) => x.path); await S.remove(lead.id); S.removeLeadPhotos(paths).catch(() => {}); close(); toast("Lead deleted"); location.hash = ""; } catch (e) { fail(e); } };
     };
   }
   function notesHtml(notes) {
@@ -841,7 +995,7 @@
     const grid = (fields) => {
       const parts = []; let run = [];
       const flush = () => { if (run.length) parts.push(`<div class="grid2">${run.join("")}</div>`); run = []; };
-      fields.forEach((f) => { const h = formInput(blank, f, {}); if (f.area) { flush(); parts.push(h); } else run.push(h); });
+      fields.forEach((f) => { const h = formInput(blank, f, {}); if (f.area || f.photos) { flush(); parts.push(h); } else run.push(h); });
       flush();
       return parts.join("");
     };
@@ -868,6 +1022,19 @@
     $$("[data-ch]", m).forEach((b) => (b.onclick = () => { channel = b.dataset.ch; $$("[data-ch]", m).forEach((x) => x.classList.toggle("on", x === b)); }));
     $("[data-no]", m).onclick = close;
     addressLookup($("#address", m));
+    wireHeard(m);
+    // Photos picked here upload once the lead is saved
+    let picked = [];
+    const showPicked = () => {
+      $("#thumbs", m).innerHTML = picked.map((f, i) => `<div class="thumb"><img src="${esc(f.url)}" alt=""><button type="button" class="thumb-x" data-rm="${i}" aria-label="Remove photo">✕</button></div>`).join("");
+      $("#photoCount", m).textContent = picked.length ? `${picked.length} of ${MAX_PHOTOS}` : `Up to ${MAX_PHOTOS} photos`;
+      $$("[data-rm]", $("#thumbs", m)).forEach((b) => (b.onclick = () => { URL.revokeObjectURL(picked[b.dataset.rm].url); picked.splice(Number(b.dataset.rm), 1); showPicked(); }));
+    };
+    $("#photoInput", m).onchange = (e) => {
+      [...e.target.files].slice(0, MAX_PHOTOS - picked.length).forEach((file) => picked.push({ file, url: URL.createObjectURL(file) }));
+      e.target.value = "";
+      showPicked();
+    };
     const err = $("#a_err", m);
     $$('input[type="email"]', m).forEach((el) => el.addEventListener("blur", () => {
       const ok = EMAIL_OK(el.value);
@@ -901,7 +1068,7 @@
       // Questions with their own column go there; the rest of the form goes in details
       const row = { channel, lead_date: isoDate(new Date()), next_steps: val("a_next") };
       const details = {};
-      [...FORM.flatMap((s) => s.fields), ...callFields].forEach((f) => {
+      [...FORM.flatMap((s) => s.fields), ...callFields].filter((f) => !f.photos).forEach((f) => {
         const v = f.k === "email" ? email : val(f.k);
         if (f.col) row[f.k] = v; else if (v) details[f.k] = v;
       });
@@ -909,7 +1076,14 @@
       const last = name.split(/\s+/).pop();
       if (!row.project_name) row.project_name = row.company || (last ? `${last} Residence` : "");
       try {
-        const lead = await S.add(row);
+        let lead = await S.add(row);
+        if (picked.length) {
+          try {
+            const photos = [];
+            for (const p of picked) photos.push({ path: await S.uploadLeadPhoto(lead.id, await shrinkPhoto(p.file)), name: p.file.name });
+            lead = await S.update(lead.id, { details: { ...(lead.details || {}), photos } });
+          } catch (pe) { toast("Lead saved, but a photo didn't upload: " + friendly(pe), true); }
+        }
         if ($("#a_slack", m).checked) {
           S.notify(lead.id).then((r) => { if (r && r.slack && r.slack !== "sent" && r.slack !== "demo") toast(r.slack, true); }).catch((er) => toast("Lead saved, but Slack couldn't be reached: " + friendly(er), true));
         }
