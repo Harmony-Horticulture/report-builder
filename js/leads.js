@@ -374,7 +374,7 @@
           <table class="leads"><thead><tr>${th("date", "Date")}${th("lead", "Lead")}${th("contact", "Contact")}${th("channel", "Came in by")}${th("stage", "Stage")}${th("next", "Next steps")}${th("qb", "QB", 'title="Added to QuickBooks"')}</tr></thead>
           <tbody>${rows.map((l) => `<tr data-id="${esc(l.id)}">
             <td>${esc(niceDate(l.lead_date))}</td>
-            <td><div class="who">${esc(displayName(l))}</div><div class="sub">${esc(l.contact_name && l.contact_name !== displayName(l) ? l.contact_name : "")}${l.address ? `${l.contact_name && l.contact_name !== displayName(l) ? " · " : ""}${esc(l.address.slice(0, 48))}` : ""}</div></td>
+            <td><div class="who">${esc(displayName(l))}</div><div class="sub">${esc(l.contact_name && l.contact_name !== displayName(l) ? l.contact_name : "")}${l.address ? `${l.contact_name && l.contact_name !== displayName(l) ? " · " : ""}${esc(l.address)}` : ""}</div></td>
             <td><div>${esc(l.phone)}</div><div class="sub">${esc(l.email)}</div></td>
             <td>${esc(CHANNEL[l.channel] || l.channel)}${l.heard_about ? `<div class="sub">${esc(l.heard_about)}</div>` : ""}</td>
             <td>${stageBadge(l.stage)}${l.assigned_to ? `<div class="sub">${esc(personName(l.assigned_to))}</div>` : ""}</td>
@@ -417,6 +417,80 @@
   // =====================================================================
   // One lead
   // =====================================================================
+  // Address suggestions while typing (OpenStreetMap search via Photon, free, no key).
+  // Results lean toward the Phoenix area. Picking one fills the full street, city, state and ZIP.
+  const STATE_ABBR = { Arizona: "AZ", California: "CA", Nevada: "NV", "New Mexico": "NM", Utah: "UT", Colorado: "CO", Texas: "TX" };
+  function formatPlace(pr, typed) {
+    let num = pr.housenumber || "";
+    const street = pr.street || (pr.osm_key === "highway" ? pr.name : "");
+    // OpenStreetMap often knows the street but not each house number, so keep the number that was typed
+    const typedNum = (String(typed).trim().match(/^(\d+[A-Za-z]?)\s/) || [])[1];
+    if (!num && typedNum && street) num = typedNum;
+    const line1 = street ? [num, street].filter(Boolean).join(" ") : pr.name || "";
+    const city = pr.city || pr.town || pr.village || pr.district || pr.county || "";
+    const st = STATE_ABBR[pr.state] || pr.state || "";
+    const tail = [st, pr.postcode].filter(Boolean).join(" ");
+    return [line1, city, tail].filter(Boolean).join(", ");
+  }
+  function addressLookup(el) {
+    if (!el) return;
+    const box = document.createElement("div");
+    box.className = "addr-menu hidden";
+    box.setAttribute("role", "listbox");
+    document.body.appendChild(box);
+    let timer = null, seq = 0, items = [], active = -1;
+    const hide = () => { box.classList.add("hidden"); active = -1; };
+    const place = () => {
+      const r = el.getBoundingClientRect();
+      box.style.left = r.left + "px"; box.style.top = r.bottom + 4 + "px"; box.style.width = r.width + "px";
+    };
+    const paint = () => {
+      if (!items.length) return hide();
+      box.innerHTML = items.map((t, i) => `<button type="button" class="addr-opt ${i === active ? "on" : ""}" data-i="${i}">${esc(t)}</button>`).join("") +
+        `<div class="addr-credit">Suggestions © OpenStreetMap</div>`;
+      place(); box.classList.remove("hidden");
+    };
+    const pick = (i) => {
+      if (items[i] == null) return;
+      el.value = items[i]; hide();
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    box.addEventListener("mousedown", (e) => e.preventDefault()); // keep focus in the field
+    box.addEventListener("click", (e) => { const b = e.target.closest("[data-i]"); if (b) pick(Number(b.dataset.i)); });
+    el.addEventListener("input", () => {
+      clearTimeout(timer);
+      const q = el.value.trim();
+      if (q.length < 4) { items = []; return hide(); }
+      timer = setTimeout(async () => {
+        const my = ++seq;
+        try {
+          const url = "https://photon.komoot.io/api/?limit=8&lang=en&lat=33.5&lon=-111.95&q=" + encodeURIComponent(q);
+          const res = await fetch(url);
+          const data = await res.json();
+          if (my !== seq || document.activeElement !== el) return;
+          const seen = new Set();
+          items = (data.features || []).map((f) => f.properties || {})
+            .filter((pr) => pr.countrycode === "US" && (pr.street || pr.osm_key === "highway" || pr.housenumber))
+            .map((pr) => formatPlace(pr, q))
+            .filter((t) => t && !seen.has(t) && seen.add(t))
+            .slice(0, 6);
+          active = -1; paint();
+        } catch (_) { items = []; hide(); }
+      }, 250);
+    });
+    el.addEventListener("keydown", (e) => {
+      if (box.classList.contains("hidden")) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); active = (active + 1) % items.length; paint(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); active = (active - 1 + items.length) % items.length; paint(); }
+      else if (e.key === "Enter" && active >= 0) { e.preventDefault(); pick(active); }
+      else if (e.key === "Escape") { e.stopPropagation(); hide(); }
+    });
+    el.addEventListener("blur", () => setTimeout(hide, 150));
+    window.addEventListener("scroll", () => { if (!box.classList.contains("hidden")) place(); }, true);
+    // Remove the menu when the field leaves the page
+    const gone = setInterval(() => { if (!document.body.contains(el)) { box.remove(); clearInterval(gone); } }, 2000);
+  }
+
   function copyField(id, label, value, opts = {}) {
     const tag = opts.area
       ? `<textarea id="${id}" rows="${opts.rows || 4}" data-f="${id}">${esc(value)}</textarea>`
@@ -524,6 +598,7 @@
 
     // Save each field as soon as it changes
     let pending = Promise.resolve();
+    addressLookup($("#address"));
     $$("[data-f]").forEach((el) => {
       const ev = el.tagName === "SELECT" || el.type === "checkbox" || el.type === "date" ? "change" : "change";
       el.addEventListener(ev, () => {
@@ -582,7 +657,7 @@
         <div class="field"><label for="a_email">Email</label><input id="a_email" type="email" autocomplete="off"></div>
         <div class="field"><label for="a_company">Company (if any)</label><input id="a_company" autocomplete="off"></div>
       </div>
-      <div class="field"><label for="a_address">Property address</label><input id="a_address" autocomplete="off"></div>
+      <div class="field"><label for="a_address">Property address</label><input id="a_address" autocomplete="off" placeholder="Start typing and pick from the list"></div>
       <div class="field"><label for="a_request">What do they need?</label><textarea id="a_request" rows="4" placeholder="Paste the voicemail, text or email, or type a summary"></textarea></div>
       <div class="grid2">
         <div class="field"><label for="a_heard">Heard about us / referred by</label><input id="a_heard" autocomplete="off"></div>
@@ -593,6 +668,7 @@
       <div class="btn-row" style="justify-content:flex-end"><button class="secondary" type="button" data-no>Cancel</button><button type="button" data-save>Save lead</button></div>`);
     $$("[data-ch]", m).forEach((b) => (b.onclick = () => { channel = b.dataset.ch; $$("[data-ch]", m).forEach((x) => x.classList.toggle("on", x === b)); }));
     $("[data-no]", m).onclick = close;
+    addressLookup($("#a_address", m));
     setTimeout(() => $("#a_name").focus(), 50);
     $("[data-save]", m).onclick = async (e) => {
       const name = $("#a_name").value.trim();
