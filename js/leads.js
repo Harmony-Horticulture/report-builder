@@ -208,11 +208,11 @@
     toastTimer = setTimeout(() => t.classList.add("hidden"), isError ? 6000 : 2600);
   }
   const fail = (e) => { console.error(e); toast(friendly(e), true); };
-  function modal(html, wide) {
+  function modal(html, wide, onClose) {
     const root = $("#modalRoot");
     root.innerHTML = `<div class="modal-back"><div class="modal ${wide ? "wide" : ""}" role="dialog" aria-modal="true">${html}</div></div>`;
     const m = $(".modal", root);
-    const close = () => { root.innerHTML = ""; };
+    const close = () => { if ($(".modal", root) !== m) return; root.innerHTML = ""; if (onClose) onClose(); };
     $(".modal-back", root).addEventListener("click", (e) => { if (e.target.classList.contains("modal-back")) close(); });
     return { m, close };
   }
@@ -777,7 +777,7 @@
     m.classList.add("lead-card-view");
     if (photos.length && $("#cardThumbs", m)) thumbsHtml(photos, false).then((h) => { if ($("#cardThumbs", m)) $("#cardThumbs", m).innerHTML = h; });
     $("[data-close]", m).onclick = close;
-    $("#cardEdit", m).onclick = () => { close(); location.hash = "lead=" + lead.id; };
+    $("#cardEdit", m).onclick = () => openEdit(lead.id);
     $("#cardQB", m).onclick = (e) => copy(qbText(lead), e.target);
     $("#cardAll", m).onclick = (e) => copy(allText(lead, intakes), e.target);
     const esc_ = (e) => { if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc_); } };
@@ -818,7 +818,21 @@
     return `<div class="field"><label for="${f.k}">${esc(f.label)}</label><div class="copy-field">${tag}<button type="button" class="copy-btn" data-copy="${f.k}">Copy</button></div></div>`;
   }
 
-  async function renderLead(id) {
+  // Edit inside the card: same edit view, in a large pop-up over the list
+  function openEdit(id) {
+    let changed = false;
+    const { m, close } = modal(`<div id="editHost"><p class="muted">Loading…</p></div>`, true, () => { if (changed) refreshList(); });
+    m.classList.add("lead-edit-modal");
+    renderLead(id, $("#editHost", m), {
+      done: () => { close(); openCard(id).catch(fail); },
+      changed: () => { changed = true; },
+    }).catch(fail);
+  }
+  // Redraw the list behind a pop-up without losing the filters
+  function refreshList() { if (!location.hash.includes("lead=")) renderList().catch(fail); }
+
+  async function renderLead(id, host, inCard) {
+    host = host || $("#view");
     const [l, intakes, notes] = await Promise.all([S.lead(id), S.intakes(id), S.notes(id)]);
     let lead = l;
     const fv = formValues(intakes);
@@ -830,8 +844,10 @@
       flush();
       return `<h3 class="form-h">${esc(s.title)}</h3>${parts.join("")}`;
     };
-    $("#view").innerHTML = `
-      <p style="margin:0 0 10px"><a href="#" id="backLink">← All leads</a></p>
+    host.innerHTML = `
+      ${inCard
+        ? `<div class="edit-bar"><span class="small muted">Changes save as you type.</span><button type="button" id="backLink">Done</button></div>`
+        : `<p style="margin:0 0 10px"><a href="#" id="backLink">← All leads</a></p>`}
       <div class="lead-head">
         <div><p class="eyebrow">Editing · ${esc(CHANNEL[lead.channel] || lead.channel)}${lead.lead_date ? " · " + esc(niceDate(lead.lead_date)) : ""}</p>
           <h1 id="leadTitle">${esc(displayName(lead))}</h1>
@@ -884,8 +900,8 @@
         </div>
       </div>`;
 
-    $("#backLink").onclick = (e) => { e.preventDefault(); location.hash = ""; };
-    $("#viewCard").onclick = () => openCard(lead.id).catch(fail);
+    $("#backLink").onclick = (e) => { e.preventDefault(); if (inCard) inCard.done(); else location.hash = ""; };
+    $("#viewCard").onclick = () => (inCard ? inCard.done() : openCard(lead.id).catch(fail));
     $$("[data-copy]").forEach((b) => (b.onclick = () => copy($("#" + b.dataset.copy).value, b)));
     $("#copyQB").onclick = (e) => copy(qbText(lead), e.target);
     $("#copyAll").onclick = (e) => copy(allText(lead, intakes), e.target);
@@ -893,7 +909,7 @@
     // Save each field as soon as it changes
     let pending = Promise.resolve();
     addressLookup($("#address"));
-    wireHeard($("#view"));
+    wireHeard(host);
     // Photos: upload as soon as they're picked
     const photosNow = () => ((lead.details || {}).photos || []).slice();
     const drawThumbs = async () => {
@@ -927,6 +943,7 @@
     }
     const saveField = (el, patchFor) => {
       $("#savedNote").textContent = "Saving…";
+      if (inCard) inCard.changed();
       pending = pending.then(async () => {
         lead = await S.update(lead.id, patchFor());
         $("#savedNote").textContent = "Saved";
@@ -974,11 +991,21 @@
         $("#notesOut").innerHTML = notesHtml(await S.notes(lead.id));
       } catch (e) { fail(e); }
     };
-    if ($("#delBtn")) $("#delBtn").onclick = () => {
-      const { m, close } = modal(`<h2>Delete this lead?</h2><p>${esc(displayName(lead))} and its intake answers and notes will be removed. This can't be undone. To keep it on record, set the stage to Lost instead.</p>
-        <div class="btn-row" style="justify-content:flex-end"><button class="secondary" data-no>Cancel</button><button class="danger" data-yes>Delete</button></div>`);
-      $("[data-no]", m).onclick = close;
-      $("[data-yes]", m).onclick = async () => { try { const paths = ((lead.details || {}).photos || []).map((x) => x.path); await S.remove(lead.id); S.removeLeadPhotos(paths).catch(() => {}); close(); toast("Lead deleted"); location.hash = ""; } catch (e) { fail(e); } };
+    if ($("#delBtn")) $("#delBtn").onclick = async (e) => {
+      const btn = e.target;
+      if (!btn.dataset.sure) {
+        btn.dataset.sure = "1";
+        btn.textContent = "Click again to delete for good";
+        setTimeout(() => { if (document.body.contains(btn)) { delete btn.dataset.sure; btn.textContent = "Delete this lead"; } }, 5000);
+        return;
+      }
+      try {
+        const paths = ((lead.details || {}).photos || []).map((x) => x.path);
+        await S.remove(lead.id);
+        S.removeLeadPhotos(paths).catch(() => {});
+        toast("Lead deleted");
+        if (inCard) { $("#modalRoot").innerHTML = ""; refreshList(); } else location.hash = "";
+      } catch (ex) { fail(ex); }
     };
   }
   function notesHtml(notes) {
