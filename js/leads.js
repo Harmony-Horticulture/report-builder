@@ -31,6 +31,10 @@
   ];
   const CHANNEL = Object.fromEntries(CHANNELS);
   const OPEN = ["new", "contacted", "intake_sent", "intake_received", "scheduled", "proposal_sent"];
+  // Who a lead can be assigned to. Slack tags them by these ids (see the
+  // same list in supabase/functions/leads-inbox).
+  const ASSIGNEES = [["kasey", "Kasey"], ["krista", "Krista"], ["robert", "Robert"], ["stephanie", "Stephanie"]];
+  const ASSIGNEE = Object.fromEntries(ASSIGNEES);
 
   // -------------------------------------------------------------------
   // Data: Supabase when connected, otherwise a demo copy in this browser
@@ -75,8 +79,11 @@
       async addNote(lead_id, body) {
         return ok(await sb.from("lead_notes").insert({ lead_id, body, author_id: meCache.id, author_name: meCache.full_name || meCache.email }).select("*").single());
       },
-      async notify(lead_id) {
-        const { data, error } = await sb.functions.invoke("leads-inbox", { body: { notify_lead_id: lead_id, app_url: appUrl() } });
+      async assign(lead_id) { return await this.callInbox({ assign_lead_id: lead_id, app_url: appUrl() }); },
+      reportUrl(lead) { return `${appUrl()}lead-report.html?k=${lead.details.report_token}`; },
+      async notify(lead_id) { return await this.callInbox({ notify_lead_id: lead_id, app_url: appUrl() }); },
+      async callInbox(body) {
+        const { data, error } = await sb.functions.invoke("leads-inbox", { body });
         if (error) {
           let msg = error.message;
           try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch (e) { /* keep the generic message */ }
@@ -168,6 +175,8 @@
       async removeLeadPhotos() {},
       async addNote(lead_id, body) { const n = { id: Date.now(), lead_id, body, created_at: new Date().toISOString(), author_name: me.full_name, automatic: false }; db.notes.push(n); save(); return n; },
       async notify() { return { ok: true, slack: "demo" }; },
+      async assign() { return { ok: true, slack: "demo" }; },
+      reportUrl(lead) { return `${appUrl()}lead-report.html?demo=${lead.id}`; },
     };
   }
 
@@ -239,7 +248,7 @@
   const stageBadge = (s) => `<span class="stage ${esc(s)}">${esc(STAGE[s] || s)}</span>`;
   const telHref = (p) => String(p || "").replace(/[^\d+]/g, "");
   const linkify = (t) => esc(t).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u.includes("drive.google.com") ? "Open file in Google Drive" : u}</a>`);
-  const personName = (id) => (state.people.find((p) => p.id === id) || {}).full_name || "";
+  const assigneeName = (l) => ASSIGNEE[(l.details || {}).assignee] || "";
   const displayName = (l) => l.project_name || l.contact_name || l.company || l.email || l.phone || "No name";
 
   // =====================================================================
@@ -318,10 +327,10 @@
     if (f.stage === "open" && !OPEN.includes(l.stage)) return false;
     if (f.stage && f.stage !== "open" && f.stage !== "all" && l.stage !== f.stage) return false;
     if (f.channel && l.channel !== f.channel) return false;
-    if (f.person === "none" && l.assigned_to) return false;
-    if (f.person && f.person !== "none" && l.assigned_to !== f.person) return false;
+    if (f.person === "none" && assigneeName(l)) return false;
+    if (f.person && f.person !== "none" && (l.details || {}).assignee !== f.person) return false;
     if (f.q) {
-      const hay = [l.project_name, l.contact_name, l.company, l.email, l.phone, l.address, l.request, l.next_steps, l.heard_about, ...Object.values(l.details || {})].join(" ").toLowerCase();
+      const hay = [l.project_name, l.contact_name, l.company, l.email, l.phone, l.address, l.request, l.next_steps, l.heard_about, ...Object.values(l.details || {}).filter((v) => typeof v === "string"), assigneeName(l)].join(" ").toLowerCase();
       const words = f.q.toLowerCase().split(/\s+/).filter(Boolean);
       const qDigits = f.q.replace(/\D/g, "");
       if (!words.every((w) => hay.includes(w)) && !(qDigits.length >= 4 && String(l.phone).replace(/\D/g, "").includes(qDigits))) return false;
@@ -366,7 +375,7 @@
           <div><label for="fc">Came in by</label><select id="fc"><option value="">Any</option>
             ${CHANNELS.map(([k, v]) => `<option value="${k}" ${f.channel === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
           <div><label for="fp">Assigned to</label><select id="fp"><option value="">Anyone</option><option value="none" ${f.person === "none" ? "selected" : ""}>Not assigned</option>
-            ${state.people.map((p) => `<option value="${esc(p.id)}" ${f.person === p.id ? "selected" : ""}>${esc(p.full_name)}</option>`).join("")}</select></div>
+            ${ASSIGNEES.map(([k, v]) => `<option value="${k}" ${f.person === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
           <div><label for="fo">Sort by</label><select id="fo">
             ${Object.entries(SORTS).map(([k, v]) => `<option value="${k}" ${f.sort === k ? "selected" : ""}>${v.label}</option>`).join("")}</select></div>
         </div>
@@ -403,7 +412,7 @@
             <td><div class="who">${esc(displayName(l))}</div><div class="sub">${esc(l.contact_name && l.contact_name !== displayName(l) ? l.contact_name : "")}${l.address ? `${l.contact_name && l.contact_name !== displayName(l) ? " · " : ""}${esc(l.address)}` : ""}</div></td>
             <td><div>${esc(l.phone)}</div><div class="sub">${esc(l.email)}</div></td>
             <td>${esc(CHANNEL[l.channel] || l.channel)}${l.heard_about ? `<div class="sub">${esc(l.heard_about)}</div>` : ""}</td>
-            <td>${stagePick(l)}${l.assigned_to ? `<div class="sub">${esc(personName(l.assigned_to))}</div>` : ""}</td>
+            <td>${stagePick(l)}${assigneeName(l) ? `<div class="sub">${esc(assigneeName(l))}</div>` : ""}</td>
             <td class="next">${esc(l.next_steps)}</td>
             <td class="qb">${qbTick(l)}</td></tr>`).join("")}</tbody></table>
         </div>
@@ -743,9 +752,8 @@
     const [lead, intakes] = await Promise.all([S.lead(id), S.intakes(id)]);
     const fv = formValues(intakes);
     const row = (label, v, html) => `<div class="qa"><div class="q">${esc(label)}</div><div class="a">${html || linkify(v)}</div></div>`;
-    const person = state.people.find((p) => p.id === lead.assigned_to);
     const stands = [
-      ["Assigned to", person ? person.full_name : ""], ["Next steps", lead.next_steps],
+      ["Assigned to", assigneeName(lead)], ["Next steps", lead.next_steps],
       ["Zone quote", lead.zone_quote != null && lead.zone_quote !== "" ? "$" + lead.zone_quote : ""],
       ["Why we lost it", lead.stage === "lost" ? lead.closed_reason : ""],
     ].filter(([, v]) => v);
@@ -764,6 +772,8 @@
       </div>
       <div class="quick">
         <button type="button" id="cardEdit">Edit</button>
+        <button type="button" class="assign-btn" id="cardAssign">${assigneeName(lead) ? "Reassign or resend report" : "Assign and send report"}</button>
+        ${(lead.details || {}).report ? `<a class="btn secondary" href="${esc(S.reportUrl(lead))}" target="_blank" rel="noopener">View lead report</a>` : ""}
         ${lead.phone ? `<a class="btn secondary" href="tel:${esc(telHref(lead.phone))}">Call</a><a class="btn secondary" href="sms:${esc(telHref(lead.phone))}">Text</a>` : ""}
         ${lead.email ? `<a class="btn secondary" href="mailto:${esc(lead.email)}">Email</a>` : ""}
         <button type="button" class="secondary" id="cardQB">Copy for QuickBooks</button>
@@ -778,10 +788,73 @@
     if (photos.length && $("#cardThumbs", m)) thumbsHtml(photos, false).then((h) => { if ($("#cardThumbs", m)) $("#cardThumbs", m).innerHTML = h; });
     $("[data-close]", m).onclick = close;
     $("#cardEdit", m).onclick = () => openEdit(lead.id);
+    $("#cardAssign", m).onclick = () => openAssign(lead.id).catch(fail);
     $("#cardQB", m).onclick = (e) => copy(qbText(lead), e.target);
     $("#cardAll", m).onclick = (e) => copy(allText(lead, intakes), e.target);
     const esc_ = (e) => { if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc_); } };
     document.addEventListener("keydown", esc_);
+  }
+
+  // =====================================================================
+  // Assign a lead: make the branded lead report and tag the person in Slack
+  // =====================================================================
+  function buildReport(lead, intakes, who, note) {
+    const fv = formValues(intakes);
+    const val = (k) => { const f = [...FORM.flatMap((x) => x.fields), ...CALL_FIELDS].find((x) => x.k === k); return f ? fieldVal(lead, f, fv.values) : ""; };
+    const sections = [...FORM, { title: "From the call", fields: CALL_FIELDS }].map((sec) => ({
+      title: sec.title,
+      rows: sec.fields.filter((f) => !["request", "goals"].includes(f.k)).map((f) => [f.label, fieldVal(lead, f, fv.values)]).filter(([, v]) => v),
+    })).filter((sec) => sec.rows.length);
+    if (fv.other.length) sections.push({ title: "Other answers", rows: fv.other.map((o) => [o.q, o.a]) });
+    const me = state.me.full_name || state.me.email || "";
+    return {
+      v: 1, title: displayName(lead), contact_name: lead.contact_name || "", company: lead.company || "",
+      phone: lead.phone || "", email: lead.email || "", address: lead.address || "",
+      stage: STAGE[lead.stage] || lead.stage, channel: CHANNEL[lead.channel] || lead.channel, lead_date: niceDate(lead.lead_date),
+      heard_about: lead.heard_about || "", service: val("service"),
+      zone_quote: lead.zone_quote != null && lead.zone_quote !== "" ? "$" + lead.zone_quote : "",
+      request: val("request"), goals: val("goals"), next_steps: lead.next_steps || "",
+      note, assignee: ASSIGNEE[who], assigned_by: me.split(/[\s@]/)[0], assigned_at: new Date().toISOString(),
+      sections, photos: ((lead.details || {}).photos || []).map((x) => ({ path: x.path, name: x.name || "" })),
+    };
+  }
+  const newToken = () => { const a = new Uint8Array(24); crypto.getRandomValues(a); return btoa(String.fromCharCode(...a)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+
+  async function openAssign(id) {
+    const [lead, intakes] = await Promise.all([S.lead(id), S.intakes(id)]);
+    const d = lead.details || {};
+    let who = d.assignee || "";
+    const { m, close } = modal(`
+      <h2>Assign ${esc(displayName(lead))}</h2>
+      <p class="small muted" style="margin-top:-4px">They get a branded lead report and a Slack message that tags them.</p>
+      <div class="field"><label>Who's taking it?</label><div class="assign-pick">${ASSIGNEES.map(([k, v]) => `<button type="button" data-who="${k}" class="${k === who ? "on" : ""}">${v}</button>`).join("")}</div></div>
+      <div class="field"><label for="as_note">Note for them (optional)</label><textarea id="as_note" rows="3" placeholder="e.g. Prefers texts before 10 AM. Can you get out there this week?"></textarea></div>
+      <p class="error-text hidden" id="as_err"></p>
+      <div class="btn-row" style="justify-content:flex-end"><button class="secondary" type="button" data-no>Cancel</button><button type="button" data-go>Assign and send</button></div>`);
+    $$("[data-who]", m).forEach((b) => (b.onclick = () => { who = b.dataset.who; $$("[data-who]", m).forEach((x) => x.classList.toggle("on", x === b)); }));
+    $("[data-no]", m).onclick = () => { close(); openCard(id).catch(fail); };
+    $("[data-go]", m).onclick = async (e) => {
+      const err = $("#as_err", m);
+      if (!who) { err.textContent = "Pick who's taking it."; err.classList.remove("hidden"); return; }
+      e.target.disabled = true; e.target.textContent = "Sending…";
+      try {
+        const report = buildReport(lead, intakes, who, $("#as_note", m).value.trim());
+        const saved = await S.update(lead.id, { details: { ...d, assignee: who, report_token: d.report_token || newToken(), report } });
+        await S.addNote(lead.id, `Assigned to ${ASSIGNEE[who]}. Lead report sent in Slack.`);
+        let slack = "sent";
+        try { const r = await S.assign(lead.id); slack = (r && r.slack) || "sent"; } catch (ex) { slack = friendly(ex); }
+        const url = S.reportUrl(saved);
+        const okSlack = slack === "sent" || slack === "demo";
+        close();
+        refreshList();
+        const done = modal(`
+          <h2>${okSlack ? `Sent to ${esc(ASSIGNEE[who])}` : `Assigned to ${esc(ASSIGNEE[who])}`}</h2>
+          <p>${slack === "demo" ? "On the demo page nothing goes to Slack, but here's the report they'd get." : okSlack ? `${esc(ASSIGNEE[who])} was tagged in Slack with a button to open the lead report.` : `The report is ready, but Slack didn't take the message: ${esc(slack)}. You can send them the link yourself.`}</p>
+          <div class="btn-row"><a class="btn" href="${esc(url)}" target="_blank" rel="noopener">Open the lead report</a><button type="button" class="secondary" data-copy-link>Copy link</button><button type="button" class="secondary" data-back>Back to the lead</button></div>`);
+        $("[data-copy-link]", done.m).onclick = (ev) => copy(url, ev.target);
+        $("[data-back]", done.m).onclick = () => { done.close(); openCard(lead.id).catch(fail); };
+      } catch (ex) { e.target.disabled = false; e.target.textContent = "Assign and send"; fail(ex); }
+    };
   }
 
   // =====================================================================
@@ -865,7 +938,7 @@
           <div class="card"><h2>Where it stands</h2>
             <div class="grid2">
               <div class="field"><label for="stage">Stage</label><select id="stage" data-f="stage">${STAGES.map(([k, v]) => `<option value="${k}" ${lead.stage === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
-              <div class="field"><label for="assigned_to">Assigned to</label><select id="assigned_to" data-f="assigned_to" ${isAdmin() ? "" : "disabled"}><option value="">Not assigned</option>${state.people.map((p) => `<option value="${esc(p.id)}" ${lead.assigned_to === p.id ? "selected" : ""}>${esc(p.full_name)}</option>`).join("")}</select></div>
+              <div class="field"><label>Assigned to</label><div class="assign-line"><strong>${esc(assigneeName(lead) || "Not assigned")}</strong><button type="button" class="secondary assign-btn" id="editAssign">${assigneeName(lead) ? "Reassign or resend" : "Assign and send report"}</button></div></div>
             </div>
             <div class="field"><label for="next_steps">Next steps</label><textarea id="next_steps" data-f="next_steps" rows="2">${esc(lead.next_steps)}</textarea></div>
             <div class="grid2">
@@ -910,6 +983,7 @@
     let pending = Promise.resolve();
     addressLookup($("#address"));
     wireHeard(host);
+    $("#editAssign").onclick = async () => { try { await pending; } catch (e) { /* shown already */ } openAssign(lead.id).catch(fail); };
     // Photos: upload as soon as they're picked
     const photosNow = () => ((lead.details || {}).photos || []).slice();
     const drawThumbs = async () => {
@@ -1139,7 +1213,7 @@
       ["Date", 12, (l) => l.lead_date ? new Date(l.lead_date + "T12:00:00") : ""], ["Project", 26, (l) => l.project_name], ["Contact", 22, (l) => l.contact_name],
       ["Company", 20, (l) => l.company], ["Phone", 16, (l) => l.phone], ["Email", 30, (l) => l.email], ["Address", 36, (l) => l.address],
       ["Came in by", 14, (l) => CHANNEL[l.channel] || l.channel], ["Heard about us", 18, (l) => l.heard_about], ["Stage", 20, (l) => STAGE[l.stage] || l.stage],
-      ["Assigned to", 18, (l) => personName(l.assigned_to)], ["Zone quote", 12, (l) => l.zone_quote == null ? "" : Number(l.zone_quote)],
+      ["Assigned to", 18, (l) => assigneeName(l)], ["Zone quote", 12, (l) => l.zone_quote == null ? "" : Number(l.zone_quote)],
       ["Next steps", 34, (l) => l.next_steps], ["Service", 18, (l) => l.service], ["Request", 60, (l) => l.request],
       ["Entered in QuickBooks", 20, (l) => (l.in_quickbooks ? "✓ Yes" : "")],
     ];
