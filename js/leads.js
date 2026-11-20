@@ -92,7 +92,7 @@
           L("d2", 1, { project_name: "Saguaro Heights HOA", contact_name: "Pat Rivera", company: "Saguaro Heights HOA", email: "pat@example.org", phone: "602-555-0144", address: "200 N Sample Way, Phoenix, AZ 85018", channel: "intake_form", stage: "intake_received", service: "Oversight", request: "Common area plants failing near the entrance. Board wants a landscape plan.", zone_quote: 350, next_steps: "Robbie to schedule site visit" }),
           L("d3", 2, { project_name: "Ocotillo Residence", contact_name: "Chris Ocotillo", phone: "480-555-0177", channel: "phone", stage: "intake_sent", request: "Voicemail: two palms dying in the back yard, wants someone to take a look.", zone_quote: 400, next_steps: "Sent intake form link, waiting" }),
           L("d4", 5, { project_name: "Agave Residence", contact_name: "Sam Agave", email: "sam@example.net", phone: "602-555-0122", channel: "text", stage: "proposal_sent", request: "Roses keep dying, wants a diagnosis and a planting plan.", zone_quote: 350, next_steps: "Proposal sent 11/15, follow up 11/22" }),
-          L("d5", 9, { project_name: "Palo Verde Residence", contact_name: "Alex Verde", email: "alex@example.com", phone: "480-555-0199", channel: "referral", heard_about: "Megan Bert", stage: "won", request: "Monthly oversight of the estate grounds.", in_quickbooks: true }),
+          L("d5", 9, { project_name: "Palo Verde Residence", contact_name: "Alex Verde", email: "alex@example.com", phone: "480-555-0199", channel: "referral", heard_about: "Megan Bert", stage: "won", won_at: new Date(now - day).toISOString(), request: "Monthly oversight of the estate grounds.", in_quickbooks: true }),
           L("d6", 15, { project_name: "Mesquite Residence", contact_name: "Robin Mesquite", phone: "602-555-0133", channel: "phone", stage: "lost", closed_reason: "Found someone else", request: "Lemon tree dying." }),
         ],
         intakes: [
@@ -130,6 +130,7 @@
       async update(id, patch) {
         const l = db.leads.find((x) => x.id === id);
         if (patch.stage && patch.stage !== l.stage) db.notes.push({ id: Date.now(), lead_id: id, created_at: new Date().toISOString(), author_name: me.full_name, automatic: true, body: "Stage changed to " + STAGE[patch.stage] });
+        if (patch.stage && patch.stage !== l.stage) l.won_at = patch.stage === "won" ? new Date().toISOString() : null;
         Object.assign(l, patch, { updated_at: new Date().toISOString() });
         save();
         return { ...l };
@@ -159,7 +160,7 @@
   const S = LIVE ? liveStore() : demoStore();
   const DEFAULT_FILTERS = { q: "", stage: "all", channel: "", person: "" };
   const state = { me: null, leads: [], people: [], f: { ...DEFAULT_FILTERS }, highlight: null };
-  try { Object.assign(state.f, JSON.parse(sessionStorage.getItem("hh-leads-filters") || "{}")); } catch (e) { /* ignore */ }
+  try { Object.assign(state.f, JSON.parse(sessionStorage.getItem("hh-leads-filters-v2") || "{}")); } catch (e) { /* ignore */ }
   const isAdmin = () => state.me && state.me.role === "admin";
 
   // --- small UI helpers ------------------------------------------------
@@ -300,7 +301,7 @@
       ["intake_sent", "Waiting on intake", "Form sent, not back", count((l) => l.stage === "intake_sent"), ""],
       ["intake_received", "Ready to schedule", "Intake in, no visit yet", count((l) => l.stage === "intake_received"), "green"],
       ["proposal_sent", "Proposal sent", "Waiting on a yes", count((l) => l.stage === "proposal_sent"), "brown"],
-      ["won", "Won this month", "", count((l) => l.stage === "won" && String(l.updated_at || "").slice(0, 7) === monthStart), "green"],
+      ["won", "Won this month", "", count((l) => l.stage === "won" && l.won_at && isoDate(new Date(l.won_at)).slice(0, 7) === monthStart), "green"],
     ];
     const f = state.f;
     $("#view").innerHTML = `
@@ -332,7 +333,7 @@
       </div>
       <div id="listOut"></div>`;
     const draw = () => {
-      sessionStorage.setItem("hh-leads-filters", JSON.stringify(state.f));
+      sessionStorage.setItem("hh-leads-filters-v2", JSON.stringify(state.f));
       // Open leads first, then Won and Lost; newest first within each
       const rank = (l) => (OPEN.includes(l.stage) ? 0 : 1);
       const rows = L.filter(matches).sort((a, b) => rank(a) - rank(b) ||
