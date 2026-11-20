@@ -13,7 +13,7 @@
 //    tags the person (@name) with a button to open the report.
 // 4. The lead report page (lead-report.html?k=...) asks for a report with
 //    GET ?report=<token>. Only that report's text and photos come back,
-//    never the rest of the leads, so Stephanie or Robert can read it
+//    never the rest of the leads, so Stephanie or Robbie can read it
 //    without a login. The token is long and random, like a shared report.
 //
 // Secrets to set in Supabase (Edge Functions > Secrets):
@@ -59,7 +59,7 @@ const TEXT_FIELDS = [
 const ASSIGNEES: Record<string, { name: string; slack: string }> = {
   kasey: { name: "Kasey", slack: "U06EN9S1NN5" },
   krista: { name: "Krista", slack: "U0C76G7S08Y" },
-  robert: { name: "Robert", slack: "U06E30N7HN2" },
+  robert: { name: "Robbie", slack: "U06E30N7HN2" },
   stephanie: { name: "Stephanie", slack: "U08V9KJTWKY" },
 };
 
