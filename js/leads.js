@@ -245,6 +245,9 @@
   const niceTime = (ts) => new Date(ts).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   const stagePick = (l) => `<select class="stage-pick stage ${esc(l.stage)}" data-of="${esc(l.id)}" aria-label="Stage for ${esc(displayName(l))}">${STAGES.map(([k, v]) => `<option value="${k}" ${l.stage === k ? "selected" : ""}>${esc(v)}</option>`).join("")}</select>`;
   const qbTick = (l) => `<button type="button" class="qb-tick ${l.in_quickbooks ? "on" : ""}" data-of="${esc(l.id)}" aria-pressed="${l.in_quickbooks ? "true" : "false"}" title="Entered in QuickBooks: click to change">${l.in_quickbooks ? "✓" : ""}</button>`;
+  // Won and entered in QuickBooks: nothing left to do, so it sinks to the bottom
+  const isDone = (l) => l.stage === "won" && !!l.in_quickbooks;
+  const assignPick = (l) => { const cur = (l.details || {}).assignee || ""; return `<select class="assign-pick-sel ${cur ? "set" : ""}" data-of="${esc(l.id)}" aria-label="Assigned to for ${esc(displayName(l))}"><option value="" ${cur ? "" : "selected"}>${cur ? "Not assigned" : "Assign to…"}</option>${ASSIGNEES.map(([k, v]) => `<option value="${k}" ${cur === k ? "selected" : ""}>${v}</option>`).join("")}</select>`; };
   const stageBadge = (s) => `<span class="stage ${esc(s)}">${esc(STAGE[s] || s)}</span>`;
   const telHref = (p) => String(p || "").replace(/[^\d+]/g, "");
   const linkify = (t) => esc(t).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u.includes("drive.google.com") ? "Open file in Google Drive" : u}</a>`);
@@ -388,6 +391,7 @@
       const sign = state.f.dir === "desc" ? -1 : 1;
       const newest = (a, b) => String(b.lead_date || "").localeCompare(String(a.lead_date || "")) || String(b.created_at).localeCompare(String(a.created_at));
       const rows = L.filter(matches).sort((a, b) => {
+        if (isDone(a) !== isDone(b)) return isDone(a) ? 1 : -1;
         const va = srt.val(a), vb = srt.val(b);
         const ea = va === "" || va == null, eb = vb === "" || vb == null;
         if (ea !== eb) return ea ? 1 : -1;
@@ -412,7 +416,7 @@
             <td><div class="who">${esc(displayName(l))}</div><div class="sub">${esc(l.contact_name && l.contact_name !== displayName(l) ? l.contact_name : "")}${l.address ? `${l.contact_name && l.contact_name !== displayName(l) ? " · " : ""}${esc(l.address)}` : ""}</div></td>
             <td><div>${esc(l.phone)}</div><div class="sub">${esc(l.email)}</div></td>
             <td>${esc(CHANNEL[l.channel] || l.channel)}${l.heard_about ? `<div class="sub">${esc(l.heard_about)}</div>` : ""}</td>
-            <td>${stagePick(l)}${assigneeName(l) ? `<div class="sub">${esc(assigneeName(l))}</div>` : ""}</td>
+            <td>${stagePick(l)}<div class="assign-cell">${assignPick(l)}</div></td>
             <td class="next">${esc(l.next_steps)}</td>
             <td class="qb">${qbTick(l)}</td></tr>`).join("")}</tbody></table>
         </div>
@@ -421,20 +425,22 @@
             <div class="sub">${esc([l.contact_name !== displayName(l) ? l.contact_name : "", l.phone].filter(Boolean).join(" · "))}</div>
             <div class="sub">${esc(niceDate(l.lead_date))} · ${esc(CHANNEL[l.channel] || l.channel)}</div></div>${stagePick(l)}</div>
           ${l.next_steps ? `<div class="next">${esc(l.next_steps)}</div>` : ""}
-          <div class="card-qb">${qbTick(l)} <span class="small muted">Entered in QB</span></div></div>`).join("")}</div>`;
+          <div class="card-qb">${qbTick(l)} <span class="small muted">Entered in QB</span><span class="card-assign">${assignPick(l)}</span></div></div>`).join("")}</div>`;
       $$("[data-id]", $("#listOut")).forEach((el) => (el.onclick = (e) => {
-        if (e.target.closest(".stage-pick, .qb-tick")) return; // quick edits don't open the card
+        if (e.target.closest(".stage-pick, .qb-tick, .assign-pick-sel")) return; // quick edits don't open the card
         openCard(el.dataset.id).catch(fail);
       }));
       // Quick edits right in the list: stage and Entered in QB
       const quickSave = async (id, patch, el) => {
         const l = L.find((x) => x.id === id);
         try {
+          const wasDone = isDone(l);
           const saved = await S.update(id, patch);
           Object.assign(l, saved);
           $("#statRow").innerHTML = statsHtml();
           bindStats();
-          toast("Saved");
+          if (isDone(l) !== wasDone) { draw(); toast(isDone(l) ? "Won and in QB, moved to the bottom" : "Saved"); }
+          else toast("Saved");
         } catch (e) { fail(e); draw(); }
       };
       $$(".stage-pick", $("#listOut")).forEach((sel) => {
@@ -451,6 +457,10 @@
         $$(`.qb-tick[data-of="${b.dataset.of}"]`, $("#listOut")).forEach((x) => { x.setAttribute("aria-pressed", on); x.classList.toggle("on", on); x.textContent = on ? "✓" : ""; });
         quickSave(b.dataset.of, { in_quickbooks: on });
       }));
+      $$(".assign-pick-sel", $("#listOut")).forEach((sel) => {
+        sel.onclick = (e) => e.stopPropagation();
+        sel.onchange = () => assignChange(sel.dataset.of, sel.value, () => draw());
+      });
       $$("[data-sort]", $("#listOut")).forEach((b) => (b.onclick = () => {
         const k = b.dataset.sort;
         if (state.f.sort === k) state.f.dir = state.f.dir === "asc" ? "desc" : "asc";
@@ -756,7 +766,7 @@
       ["Assigned to", assigneeName(lead)], ["Next steps", lead.next_steps],
       ["Zone quote", lead.zone_quote != null && lead.zone_quote !== "" ? "$" + lead.zone_quote : ""],
       ["Why we lost it", lead.stage === "lost" ? lead.closed_reason : ""],
-    ].filter(([, v]) => v);
+    ].filter(([k, v]) => v && k !== "Assigned to");
     const photos = (lead.details || {}).photos || [];
     const sections = [...FORM, { title: "From the call", fields: CALL_FIELDS }].map((s) => {
       const rows = s.fields.map((f) => [f.label, fieldVal(lead, f, fv.values), f]).filter(([, v, f]) => v || (f.photos && photos.length));
@@ -767,12 +777,13 @@
       <div class="lc-head">
         <div><p class="eyebrow">${esc(CHANNEL[lead.channel] || lead.channel)}${lead.lead_date ? " · " + esc(niceDate(lead.lead_date)) : ""}</p>
           <h2 class="lc-title">${esc(displayName(lead))}</h2>
-          <div>${stageBadge(lead.stage)} ${lead.in_quickbooks ? `<span class="qb-badge">✓ Entered in QB</span>` : ""}</div>${subs}</div>
+          <div>${stageBadge(lead.stage)} ${lead.in_quickbooks ? `<span class="qb-badge">✓ Entered in QB</span>` : ""}</div>
+          <div class="lc-assign"><label>Assigned to</label>${assignPick(lead)}</div>${subs}</div>
         <button type="button" class="lc-x secondary" data-close aria-label="Close">✕</button>
       </div>
       <div class="quick">
         <button type="button" id="cardEdit">Edit</button>
-        <button type="button" class="assign-btn" id="cardAssign">${assigneeName(lead) ? "Reassign or resend report" : "Assign and send report"}</button>
+        ${assigneeName(lead) ? `<button type="button" class="secondary" id="cardAssign">Resend report to ${esc(assigneeName(lead))}</button>` : `<button type="button" class="assign-btn" id="cardAssign">Assign and send report</button>`}
         ${(lead.details || {}).report ? `<a class="btn secondary" href="${esc(S.reportUrl(lead))}" target="_blank" rel="noopener">View lead report</a>` : ""}
         ${lead.phone ? `<a class="btn secondary" href="tel:${esc(telHref(lead.phone))}">Call</a><a class="btn secondary" href="sms:${esc(telHref(lead.phone))}">Text</a>` : ""}
         ${lead.email ? `<a class="btn secondary" href="mailto:${esc(lead.email)}">Email</a>` : ""}
@@ -789,6 +800,7 @@
     $("[data-close]", m).onclick = close;
     $("#cardEdit", m).onclick = () => openEdit(lead.id);
     $("#cardAssign", m).onclick = () => openAssign(lead.id).catch(fail);
+    $(".assign-pick-sel", m).onchange = (e) => assignChange(lead.id, e.target.value, () => openCard(lead.id).catch(fail));
     $("#cardQB", m).onclick = (e) => copy(qbText(lead), e.target);
     $("#cardAll", m).onclick = (e) => copy(allText(lead, intakes), e.target);
     const esc_ = (e) => { if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc_); } };
@@ -820,19 +832,34 @@
   }
   const newToken = () => { const a = new Uint8Array(24); crypto.getRandomValues(a); return btoa(String.fromCharCode(...a)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
 
-  async function openAssign(id) {
+  async function assignChange(id, who, back) {
+    try {
+      if (who) return await openAssign(id, { who, back });
+      const lead = await S.lead(id);
+      const was = assigneeName(lead);
+      const saved = await S.update(id, { details: { ...(lead.details || {}), assignee: "" } });
+      if (was) await S.addNote(id, `No longer assigned to ${was}.`);
+      const l = state.leads.find((x) => x.id === id); if (l) Object.assign(l, saved);
+      toast("Unassigned");
+      back();
+    } catch (e) { fail(e); }
+  }
+
+  async function openAssign(id, opts = {}) {
     const [lead, intakes] = await Promise.all([S.lead(id), S.intakes(id)]);
     const d = lead.details || {};
-    let who = d.assignee || "";
+    let who = opts.who || d.assignee || "";
+    let sent = false; // closing without sending puts things back as they were
+    const back = opts.back || (() => openCard(id).catch(fail));
     const { m, close } = modal(`
       <h2>Assign ${esc(displayName(lead))}</h2>
       <p class="small muted" style="margin-top:-4px">They get a branded lead report and a Slack message that tags them.</p>
       <div class="field"><label>Who's taking it?</label><div class="assign-pick">${ASSIGNEES.map(([k, v]) => `<button type="button" data-who="${k}" class="${k === who ? "on" : ""}">${v}</button>`).join("")}</div></div>
       <div class="field"><label for="as_note">Note for them (optional)</label><textarea id="as_note" rows="3" placeholder="e.g. Prefers texts before 10 AM. Can you get out there this week?"></textarea></div>
       <p class="error-text hidden" id="as_err"></p>
-      <div class="btn-row" style="justify-content:flex-end"><button class="secondary" type="button" data-no>Cancel</button><button type="button" data-go>Assign and send</button></div>`);
+      <div class="btn-row" style="justify-content:flex-end"><button class="secondary" type="button" data-no>Cancel</button><button type="button" data-go>Assign and send</button></div>`, false, () => { if (!sent) back(); });
     $$("[data-who]", m).forEach((b) => (b.onclick = () => { who = b.dataset.who; $$("[data-who]", m).forEach((x) => x.classList.toggle("on", x === b)); }));
-    $("[data-no]", m).onclick = () => { close(); openCard(id).catch(fail); };
+    $("[data-no]", m).onclick = () => close();
     $("[data-go]", m).onclick = async (e) => {
       const err = $("#as_err", m);
       if (!who) { err.textContent = "Pick who's taking it."; err.classList.remove("hidden"); return; }
@@ -845,7 +872,9 @@
         try { const r = await S.assign(lead.id); slack = (r && r.slack) || "sent"; } catch (ex) { slack = friendly(ex); }
         const url = S.reportUrl(saved);
         const okSlack = slack === "sent" || slack === "demo";
+        sent = true;
         close();
+        const inList = state.leads.find((x) => x.id === lead.id); if (inList) Object.assign(inList, saved);
         refreshList();
         const done = modal(`
           <h2>${okSlack ? `Sent to ${esc(ASSIGNEE[who])}` : `Assigned to ${esc(ASSIGNEE[who])}`}</h2>
