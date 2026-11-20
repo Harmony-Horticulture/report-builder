@@ -11,6 +11,9 @@
   const LIVE = !!(cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY) && !params.has("demo");
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  // Something@something.something, no spaces (catches "name@aol." or "name aol.com")
+  const EMAIL_OK = (v) => !v || /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)*\.[a-z]{2,}$/i.test(String(v).trim());
+  const BAD_EMAIL = "That email doesn't look complete. It should look like name@aol.com.";
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const pad = (n) => String(n).padStart(2, "0");
   const isoDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -606,7 +609,11 @@
         let v = el.type === "checkbox" ? el.checked : el.value;
         if (k === "zone_quote") v = v === "" ? null : Number(v);
         if (k === "assigned_to" || k === "lead_date") v = v || null;
-        if (k === "email") v = String(v).trim().toLowerCase();
+        if (k === "email") {
+          v = String(v).trim().toLowerCase();
+          el.classList.toggle("invalid", !EMAIL_OK(v));
+          if (!EMAIL_OK(v)) { $("#savedNote").textContent = "Not saved: " + BAD_EMAIL; return; }
+        }
         $("#savedNote").textContent = "Saving…";
         pending = pending.then(async () => {
           lead = await S.update(lead.id, { [k]: v });
@@ -669,6 +676,13 @@
     $$("[data-ch]", m).forEach((b) => (b.onclick = () => { channel = b.dataset.ch; $$("[data-ch]", m).forEach((x) => x.classList.toggle("on", x === b)); }));
     $("[data-no]", m).onclick = close;
     addressLookup($("#a_address", m));
+    $("#a_email", m).addEventListener("blur", (ev) => {
+      const ok = EMAIL_OK(ev.target.value);
+      ev.target.classList.toggle("invalid", !ok);
+      const err = $("#a_err", m);
+      if (!ok) { err.textContent = BAD_EMAIL; err.classList.remove("hidden"); }
+      else if (err.textContent === BAD_EMAIL) err.classList.add("hidden");
+    });
     setTimeout(() => $("#a_name").focus(), 50);
     $("[data-save]", m).onclick = async (e) => {
       const name = $("#a_name").value.trim();
@@ -676,6 +690,7 @@
       const email = $("#a_email").value.trim().toLowerCase();
       const err = $("#a_err");
       if (!name && !phone && !email) { err.textContent = "Add at least a name, phone or email."; err.classList.remove("hidden"); return; }
+      if (!EMAIL_OK(email)) { $("#a_email").classList.add("invalid"); $("#a_email").focus(); err.textContent = BAD_EMAIL; err.classList.remove("hidden"); return; }
       // Already have them? Offer to open the existing lead instead.
       const digits = (s) => String(s || "").replace(/\D/g, "").slice(-10);
       const dupe = state.leads.find((l) => (email && l.email && l.email.toLowerCase() === email) || (digits(phone).length === 10 && digits(l.phone) === digits(phone)));

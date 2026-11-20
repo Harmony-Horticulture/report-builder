@@ -89,3 +89,6 @@ table.leads th { padding: 0; }
 .addr-opt { display: block; width: 100%; text-align: left; background: #fff; color: var(--text); font-weight: 400; font-size: 0.92rem; padding: 10px 12px; border-radius: 0; border-bottom: 1px solid #F0F0F0; }
 .addr-opt:hover, .addr-opt.on { background: #EEF6E6; filter: none; }
 .addr-credit { font-size: 0.7rem; color: #9A9A9A; padding: 4px 12px 6px; text-align: right; }
+
+/* Email that doesn't look right */
+input.invalid, textarea.invalid { border-color: #C0392B !important; box-shadow: 0 0 0 3px rgba(192,57,43,0.15) !important; }
