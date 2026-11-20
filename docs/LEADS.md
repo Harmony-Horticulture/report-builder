@@ -19,9 +19,9 @@ This takes about 20 minutes, once. Kasey (the intake form's owner) is needed for
 2. Paste all of [`supabase/02_leads.sql`](../supabase/02_leads.sql) and click **Run**. The result says "Leads are set up".
 3. Open another new query, paste all of **leads-import-from-slack.sql** from the project files and click **Run**. You'll see how many leads landed in each stage.
 
-Then do the same with [`supabase/03_leads_won_date.sql`](../supabase/03_leads_won_date.sql), which records the day each lead is won for the "Won this month" count.
+Then do the same with [`supabase/03_leads_won_date.sql`](../supabase/03_leads_won_date.sql), which records the day each lead is won for the "Won this month" count, and [`supabase/04_leads_details.sql`](../supabase/04_leads_details.sql), which holds the intake form answers that don't have a column of their own.
 
-All three are safe to run again.
+All of them are safe to run again.
 
 ## 2. Make a Slack link for lead messages
 
@@ -70,6 +70,8 @@ The response sheet and the existing #form-submissions messages keep working as t
 - **Website contact form:** the hourly lead check reads the "New Consultation Request" emails and sends each one to the dashboard, with the same matching. (Later, the website could send leads straight to `leads-inbox` instead.)
 
 ## Good to know
+
+- **Lead card and Edit:** clicking a lead opens a card with only what's filled in. **Edit** opens every intake form question, in the same order as the Google Form. The client's form answers fill in on their own, and anything typed on a call is saved as you go, so the fields are the same whoever filled them in.
 
 - **Who sees leads:** admins see and edit everything. Consultants and technicians only see leads assigned to them.
 - **Copy buttons:** every contact field has its own **Copy** button, and **Copy for QuickBooks** copies the customer name, contact, email, phone and address in one go.

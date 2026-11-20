@@ -92,3 +92,18 @@ table.leads th { padding: 0; }
 
 /* Email that doesn't look right */
 input.invalid, textarea.invalid { border-color: #C0392B !important; box-shadow: 0 0 0 3px rgba(192,57,43,0.15) !important; }
+
+/* Lead card (read-only view) */
+.lead-card-view { padding-top: 18px; }
+.lc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.lc-title { margin: 2px 0 6px; font-size: 1.4rem; }
+.lc-x { padding: 6px 10px; min-width: 0; line-height: 1; }
+.lc-body h3, .form-h { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--green); border-bottom: 2px solid var(--leaf); padding-bottom: 4px; margin: 18px 0 4px; }
+.lc-body h3:first-child { margin-top: 4px; }
+.lc-body .qa { display: grid; grid-template-columns: 220px 1fr; gap: 12px; }
+.lc-body .qa .q { padding-top: 2px; }
+.lc-body .qa .a { margin-top: 0; }
+.qb-badge { display: inline-block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--green); background: #E8F4DC; border-radius: 999px; padding: 3px 9px; margin-left: 4px; }
+.qb-check { margin-top: 10px; }
+details summary { cursor: pointer; }
+@media (max-width: 640px) { .lc-body .qa { grid-template-columns: 1fr; gap: 2px; } }
