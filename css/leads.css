@@ -137,3 +137,11 @@ select.stage-pick:hover, select.stage-pick:focus { border-color: currentColor; o
 .modal.lead-edit-modal { max-width: 1180px; background: var(--bg, #F4F4F4); }
 .lead-edit-modal .edit-bar { position: sticky; top: -24px; z-index: 5; display: flex; justify-content: space-between; align-items: center; gap: 12px; background: var(--white); margin: -24px -24px 16px; padding: 12px 24px; border-bottom: 1px solid var(--line); }
 .lead-edit-modal .lead-head h1 { font-size: 1.5rem; }
+
+/* Assign a lead */
+.assign-pick { display: flex; flex-wrap: wrap; gap: 8px; }
+.assign-pick button { background: #fff; color: var(--text); border: 2px solid var(--line); min-width: 110px; }
+.assign-pick button.on { border-color: var(--green); background: #E3F4EA; color: #006B31; }
+.assign-pick button:hover { filter: none; border-color: var(--leaf); }
+button.assign-btn:not(.secondary) { background: var(--pink); border-color: var(--pink); }
+.assign-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; min-height: 40px; }

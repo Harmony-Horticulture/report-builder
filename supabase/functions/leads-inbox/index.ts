@@ -8,6 +8,13 @@
 //    new lead, the answers are saved, and Slack gets a message.
 // 2. The Leads page calls it (signed in as an admin) after someone adds
 //    a lead by hand, so Slack hears about calls and texts too.
+// 3. Assigning a lead: the Leads page saves a branded lead report on the
+//    lead, then calls this with assign_lead_id. Slack gets a message that
+//    tags the person (@name) with a button to open the report.
+// 4. The lead report page (lead-report.html?k=...) asks for a report with
+//    GET ?report=<token>. Only that report's text and photos come back,
+//    never the rest of the leads, so Stephanie or Robert can read it
+//    without a login. The token is long and random, like a shared report.
 //
 // Secrets to set in Supabase (Edge Functions > Secrets):
 //   LEADS_INBOX_KEY    a long random password that the form script and
@@ -27,7 +34,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-leads-key",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
@@ -47,6 +54,14 @@ const TEXT_FIELDS = [
   "project_name", "contact_name", "company", "email", "phone", "address", "property_type",
   "service", "request", "goals", "budget", "heard_about",
 ];
+
+// The people a lead can be assigned to, and who to tag in Slack
+const ASSIGNEES: Record<string, { name: string; slack: string }> = {
+  kasey: { name: "Kasey", slack: "U06EN9S1NN5" },
+  krista: { name: "Krista", slack: "U0C76G7S08Y" },
+  robert: { name: "Robert", slack: "U06E30N7HN2" },
+  stephanie: { name: "Stephanie", slack: "U08V9KJTWKY" },
+};
 
 const digits = (s: unknown) => String(s ?? "").replace(/\D/g, "").slice(-10);
 const clip = (s: unknown, n: number) => {
@@ -96,11 +111,15 @@ async function postToSlack(text: string, url: string, button?: string) {
   return res.ok ? null : `Slack said ${res.status}`;
 }
 
-function leadUrl(id: string, appUrlFromCaller?: string) {
+function appBase(appUrlFromCaller?: string) {
   let base = Deno.env.get("APP_URL") || appUrlFromCaller || "";
   if (!/^https?:\/\//.test(base)) return "";
   if (!base.endsWith("/")) base += "/";
-  return `${base}leads.html#lead=${id}`;
+  return base;
+}
+function leadUrl(id: string, appUrlFromCaller?: string) {
+  const base = appBase(appUrlFromCaller);
+  return base ? `${base}leads.html#lead=${id}` : "";
 }
 
 function slackText(kind: string, lead: Record<string, unknown>, extra = "") {
@@ -130,13 +149,58 @@ function serviceKey() {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-  if (req.method !== "POST") return json({ error: "Use POST." }, 405);
-
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey(), { auth: { persistSession: false } });
+
+  // -----------------------------------------------------------------
+  // The lead report page: one report, found by its long random token
+  // -----------------------------------------------------------------
+  if (req.method === "GET") {
+    const token = new URL(req.url).searchParams.get("report") || "";
+    if (!/^[A-Za-z0-9_-]{24,}$/.test(token)) return json({ error: "This report link isn't complete." }, 400);
+    const { data: rows, error } = await admin.from("leads").select("id, details").eq("details->>report_token", token).limit(1);
+    if (error) { console.error(error); return json({ error: "Couldn't load the report." }, 500); }
+    const lead = rows?.[0];
+    const report = lead?.details?.report;
+    if (!lead || !report) return json({ error: "This report was taken down or the link is wrong." }, 404);
+    // Photos stay private; each one gets a link that works for a few hours
+    const photos: { url: string; name: string }[] = [];
+    for (const ph of (Array.isArray(report.photos) ? report.photos : [])) {
+      const { data: signed } = await admin.storage.from("lead-photos").createSignedUrl(String(ph.path), 6 * 3600);
+      if (signed?.signedUrl) photos.push({ url: signed.signedUrl, name: String(ph.name || "") });
+    }
+    return json({ ok: true, report: { ...report, photos } });
+  }
+  if (req.method !== "POST") return json({ error: "Use POST." }, 405);
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return json({ error: "Send JSON." }, 400); }
 
   try {
+    // ---------------------------------------------------------------
+    // From the Leads page: a lead was assigned. Tag the person in Slack.
+    // ---------------------------------------------------------------
+    if (body.assign_lead_id) {
+      const auth = req.headers.get("Authorization") ?? "";
+      const asUser = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: auth } }, auth: { persistSession: false },
+      });
+      const { data: u } = await asUser.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
+      if (!u?.user) return json({ error: "Please sign in again." }, 401);
+      const { data: me } = await asUser.from("profiles").select("full_name, email, role, active").eq("id", u.user.id).single();
+      if (!me || !me.active || me.role !== "admin") return json({ error: "You don't have permission to do that." }, 403);
+      const { data: lead } = await asUser.from("leads").select("*").eq("id", body.assign_lead_id).single();
+      if (!lead) return json({ error: "Lead not found." }, 404);
+      const who = ASSIGNEES[String(lead.details?.assignee || "")];
+      const token = String(lead.details?.report_token || "");
+      if (!who || !token) return json({ error: "Pick who it's assigned to first." }, 400);
+      const base = appBase(String(body.app_url || ""));
+      const url = base ? `${base}lead-report.html?k=${token}` : "";
+      const note = String(lead.details?.report?.note || "").trim();
+      const text = slackText(`<@${who.slack}> you've been assigned a lead`, lead,
+        [note ? `Note: _${slackSafe(clip(note, 400))}_` : "", `Assigned by ${slackSafe(me.full_name || me.email)}`].filter(Boolean).join("\n"));
+      const err = await postToSlack(text, url, "Open lead report");
+      return json({ ok: true, slack: err ? err : "sent", url });
+    }
+
     // ---------------------------------------------------------------
     // From the Leads page: tell Slack about a lead someone just added
     // ---------------------------------------------------------------
