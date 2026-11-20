@@ -33,7 +33,7 @@
   const OPEN = ["new", "contacted", "intake_sent", "intake_received", "scheduled", "proposal_sent"];
   // Who a lead can be assigned to. Slack tags them by these ids (see the
   // same list in supabase/functions/leads-inbox).
-  const ASSIGNEES = [["kasey", "Kasey"], ["krista", "Krista"], ["robert", "Robert"], ["stephanie", "Stephanie"]];
+  const ASSIGNEES = [["kasey", "Kasey"], ["krista", "Krista"], ["robert", "Robbie"], ["stephanie", "Stephanie"]];
   const ASSIGNEE = Object.fromEntries(ASSIGNEES);
 
   // -------------------------------------------------------------------
