@@ -158,9 +158,21 @@
   }
 
   const S = LIVE ? liveStore() : demoStore();
-  const DEFAULT_FILTERS = { q: "", stage: "all", channel: "", person: "" };
+  const DEFAULT_FILTERS = { q: "", stage: "all", channel: "", person: "", sort: "stage", dir: "asc" };
+  // Columns you can sort by. Each gives a value to compare; ties fall back to newest first.
+  const SORTS = {
+    stage: { label: "Stage", val: (l) => STAGES.findIndex(([k]) => k === l.stage) },
+    date: { label: "Date", val: (l) => String(l.lead_date || "") + String(l.created_at || "") },
+    lead: { label: "Lead name", val: (l) => displayName(l).toLowerCase() },
+    contact: { label: "Contact", val: (l) => String(l.contact_name || "").toLowerCase() },
+    channel: { label: "Came in by", val: (l) => String(CHANNEL[l.channel] || l.channel).toLowerCase() },
+    next: { label: "Next steps", val: (l) => String(l.next_steps || "").toLowerCase() },
+    qb: { label: "In QuickBooks", val: (l) => (l.in_quickbooks ? 1 : 0) },
+  };
+  // Direction a column starts in when first clicked
+  const FIRST_DIR = { stage: "asc", date: "desc", lead: "asc", contact: "asc", channel: "asc", next: "asc", qb: "desc" };
   const state = { me: null, leads: [], people: [], f: { ...DEFAULT_FILTERS }, highlight: null };
-  try { Object.assign(state.f, JSON.parse(sessionStorage.getItem("hh-leads-filters-v2") || "{}")); } catch (e) { /* ignore */ }
+  try { Object.assign(state.f, JSON.parse(sessionStorage.getItem("hh-leads-filters-v3") || "{}")); } catch (e) { /* ignore */ }
   const isAdmin = () => state.me && state.me.role === "admin";
 
   // --- small UI helpers ------------------------------------------------
@@ -321,7 +333,7 @@
         <div class="lead-filters">
           <div class="wide"><label for="fq">Search leads</label><input id="fq" type="search" placeholder="Search by name, phone, email, address or notes" value="${esc(f.q)}"></div>
           <div><label for="fs">Stage</label><select id="fs">
-            <option value="all" ${f.stage === "all" ? "selected" : ""}>All leads, open first</option>
+            <option value="all" ${f.stage === "all" ? "selected" : ""}>All leads</option>
             <option value="open" ${f.stage === "open" ? "selected" : ""}>Open leads only</option>
             ${STAGES.map(([k, v]) => `<option value="${k}" ${f.stage === k ? "selected" : ""}>${v}</option>`).join("")}
           </select></div>
@@ -329,15 +341,28 @@
             ${CHANNELS.map(([k, v]) => `<option value="${k}" ${f.channel === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
           <div><label for="fp">Assigned to</label><select id="fp"><option value="">Anyone</option><option value="none" ${f.person === "none" ? "selected" : ""}>Not assigned</option>
             ${state.people.map((p) => `<option value="${esc(p.id)}" ${f.person === p.id ? "selected" : ""}>${esc(p.full_name)}</option>`).join("")}</select></div>
+          <div><label for="fo">Sort by</label><select id="fo">
+            ${Object.entries(SORTS).map(([k, v]) => `<option value="${k}" ${f.sort === k ? "selected" : ""}>${v.label}</option>`).join("")}</select></div>
         </div>
       </div>
       <div id="listOut"></div>`;
     const draw = () => {
-      sessionStorage.setItem("hh-leads-filters-v2", JSON.stringify(state.f));
-      // Open leads first, then Won and Lost; newest first within each
-      const rank = (l) => (OPEN.includes(l.stage) ? 0 : 1);
-      const rows = L.filter(matches).sort((a, b) => rank(a) - rank(b) ||
-        String(b.lead_date || "").localeCompare(String(a.lead_date || "")) || String(b.created_at).localeCompare(String(a.created_at)));
+      sessionStorage.setItem("hh-leads-filters-v3", JSON.stringify(state.f));
+      // Sorted by the chosen column; ties go newest first. Blank values always go last.
+      const srt = SORTS[state.f.sort] || SORTS.stage;
+      const sign = state.f.dir === "desc" ? -1 : 1;
+      const newest = (a, b) => String(b.lead_date || "").localeCompare(String(a.lead_date || "")) || String(b.created_at).localeCompare(String(a.created_at));
+      const rows = L.filter(matches).sort((a, b) => {
+        const va = srt.val(a), vb = srt.val(b);
+        const ea = va === "" || va == null, eb = vb === "" || vb == null;
+        if (ea !== eb) return ea ? 1 : -1;
+        const c = typeof va === "number" ? va - vb : String(va).localeCompare(String(vb));
+        return c * sign || newest(a, b);
+      });
+      const th = (k, label, extra = "") => {
+        const on = state.f.sort === k;
+        return `<th ${extra}><button type="button" class="sort-btn ${on ? "on" : ""}" data-sort="${k}" title="Sort by ${esc(label)}">${label}<span class="arrow">${on ? (state.f.dir === "desc" ? "▼" : "▲") : "↕"}</span></button></th>`;
+      };
       $$("[data-stat]").forEach((b) => b.classList.toggle("on", state.f.stage === b.dataset.stat));
       if (!rows.length) {
         $("#listOut").innerHTML = `<div class="card empty">${L.length ? "No leads match these filters." : "No leads yet. Add one, or they'll appear here when the website or intake form is filled in."}</div>`;
@@ -346,7 +371,7 @@
       $("#listOut").innerHTML = `
         <p class="small muted" style="margin:0 0 8px">${rows.length} lead${rows.length === 1 ? "" : "s"}</p>
         <div class="card table-wrap leads-table" style="padding:6px 8px">
-          <table class="leads"><thead><tr><th>Date</th><th>Lead</th><th>Contact</th><th>Came in by</th><th>Stage</th><th>Next steps</th><th title="Added to QuickBooks">QB</th></tr></thead>
+          <table class="leads"><thead><tr>${th("date", "Date")}${th("lead", "Lead")}${th("contact", "Contact")}${th("channel", "Came in by")}${th("stage", "Stage")}${th("next", "Next steps")}${th("qb", "QB", 'title="Added to QuickBooks"')}</tr></thead>
           <tbody>${rows.map((l) => `<tr data-id="${esc(l.id)}">
             <td>${esc(niceDate(l.lead_date))}</td>
             <td><div class="who">${esc(displayName(l))}</div><div class="sub">${esc(l.contact_name && l.contact_name !== displayName(l) ? l.contact_name : "")}${l.address ? `${l.contact_name && l.contact_name !== displayName(l) ? " · " : ""}${esc(l.address.slice(0, 48))}` : ""}</div></td>
@@ -362,6 +387,13 @@
             <div class="sub">${esc(niceDate(l.lead_date))} · ${esc(CHANNEL[l.channel] || l.channel)}</div></div>${stageBadge(l.stage)}</div>
           ${l.next_steps ? `<div class="next">${esc(l.next_steps)}</div>` : ""}</div>`).join("")}</div>`;
       $$("[data-id]", $("#listOut")).forEach((el) => (el.onclick = () => { location.hash = "lead=" + el.dataset.id; }));
+      $$("[data-sort]", $("#listOut")).forEach((b) => (b.onclick = () => {
+        const k = b.dataset.sort;
+        if (state.f.sort === k) state.f.dir = state.f.dir === "asc" ? "desc" : "asc";
+        else { state.f.sort = k; state.f.dir = FIRST_DIR[k] || "asc"; }
+        $("#fo").value = state.f.sort;
+        draw();
+      }));
       if (state.highlight) {
         $$(`[data-id="${state.highlight}"]`, $("#listOut")).forEach((el) => el.classList.add("just-added"));
         state.highlight = null;
@@ -372,6 +404,7 @@
     $("#fs").onchange = (e) => { state.f.stage = e.target.value; draw(); };
     $("#fc").onchange = (e) => { state.f.channel = e.target.value; draw(); };
     $("#fp").onchange = (e) => { state.f.person = e.target.value; draw(); };
+    $("#fo").onchange = (e) => { state.f.sort = e.target.value; state.f.dir = FIRST_DIR[e.target.value] || "asc"; draw(); };
     $$("[data-stat]").forEach((b) => (b.onclick = () => {
       state.f.stage = state.f.stage === b.dataset.stat ? "all" : b.dataset.stat;
       $("#fs").value = state.f.stage;
