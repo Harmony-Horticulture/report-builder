@@ -70,3 +70,8 @@ a.btn.secondary { background: var(--white); color: var(--green); border: 1px sol
   .table-wrap.leads-table { display: none; }
   .lead-cards { display: block; }
 }
+
+/* Newly added lead */
+@keyframes hhFlash { from { background: #EAF5DD; } to { background: transparent; } }
+table.leads tr.just-added td { animation: hhFlash 3s ease-out; }
+.lead-card.just-added { animation: hhFlash 3s ease-out; border-left-color: var(--pink); }
