@@ -83,3 +83,9 @@ table.leads th { padding: 0; }
 .sort-btn .arrow { font-size: 0.7rem; color: #9A9A9A; }
 .sort-btn.on { color: var(--green); }
 .sort-btn.on .arrow { color: var(--green); }
+
+/* Address suggestions */
+.addr-menu { position: fixed; z-index: 1000; background: #fff; border: 1px solid #D9D9D9; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); overflow: hidden; }
+.addr-opt { display: block; width: 100%; text-align: left; background: #fff; color: var(--text); font-weight: 400; font-size: 0.92rem; padding: 10px 12px; border-radius: 0; border-bottom: 1px solid #F0F0F0; }
+.addr-opt:hover, .addr-opt.on { background: #EEF6E6; filter: none; }
+.addr-credit { font-size: 0.7rem; color: #9A9A9A; padding: 4px 12px 6px; text-align: right; }
