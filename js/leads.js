@@ -64,7 +64,11 @@
       },
       async notify(lead_id) {
         const { data, error } = await sb.functions.invoke("leads-inbox", { body: { notify_lead_id: lead_id, app_url: appUrl() } });
-        if (error) throw error;
+        if (error) {
+          let msg = error.message;
+          try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch (e) { /* keep the generic message */ }
+          throw new Error(msg);
+        }
         return data;
       },
     };
@@ -153,7 +157,8 @@
   }
 
   const S = LIVE ? liveStore() : demoStore();
-  const state = { me: null, leads: [], people: [], f: { q: "", stage: "open", channel: "", person: "" } };
+  const DEFAULT_FILTERS = { q: "", stage: "all", channel: "", person: "" };
+  const state = { me: null, leads: [], people: [], f: { ...DEFAULT_FILTERS }, highlight: null };
   try { Object.assign(state.f, JSON.parse(sessionStorage.getItem("hh-leads-filters") || "{}")); } catch (e) { /* ignore */ }
   const isAdmin = () => state.me && state.me.role === "admin";
 
@@ -313,10 +318,10 @@
       </div>
       <div class="card" style="padding-bottom:12px">
         <div class="lead-filters">
-          <div class="wide"><label for="fq">Search</label><input id="fq" type="search" placeholder="Name, phone, email, address or notes" value="${esc(f.q)}"></div>
+          <div class="wide"><label for="fq">Search leads</label><input id="fq" type="search" placeholder="Search by name, phone, email, address or notes" value="${esc(f.q)}"></div>
           <div><label for="fs">Stage</label><select id="fs">
-            <option value="open" ${f.stage === "open" ? "selected" : ""}>Open leads</option>
-            <option value="all" ${f.stage === "all" ? "selected" : ""}>All leads</option>
+            <option value="all" ${f.stage === "all" ? "selected" : ""}>All leads, open first</option>
+            <option value="open" ${f.stage === "open" ? "selected" : ""}>Open leads only</option>
             ${STAGES.map(([k, v]) => `<option value="${k}" ${f.stage === k ? "selected" : ""}>${v}</option>`).join("")}
           </select></div>
           <div><label for="fc">Came in by</label><select id="fc"><option value="">Any</option>
@@ -328,7 +333,10 @@
       <div id="listOut"></div>`;
     const draw = () => {
       sessionStorage.setItem("hh-leads-filters", JSON.stringify(state.f));
-      const rows = L.filter(matches);
+      // Open leads first, then Won and Lost; newest first within each
+      const rank = (l) => (OPEN.includes(l.stage) ? 0 : 1);
+      const rows = L.filter(matches).sort((a, b) => rank(a) - rank(b) ||
+        String(b.lead_date || "").localeCompare(String(a.lead_date || "")) || String(b.created_at).localeCompare(String(a.created_at)));
       $$("[data-stat]").forEach((b) => b.classList.toggle("on", state.f.stage === b.dataset.stat));
       if (!rows.length) {
         $("#listOut").innerHTML = `<div class="card empty">${L.length ? "No leads match these filters." : "No leads yet. Add one, or they'll appear here when the website or intake form is filled in."}</div>`;
@@ -353,6 +361,10 @@
             <div class="sub">${esc(niceDate(l.lead_date))} · ${esc(CHANNEL[l.channel] || l.channel)}</div></div>${stageBadge(l.stage)}</div>
           ${l.next_steps ? `<div class="next">${esc(l.next_steps)}</div>` : ""}</div>`).join("")}</div>`;
       $$("[data-id]", $("#listOut")).forEach((el) => (el.onclick = () => { location.hash = "lead=" + el.dataset.id; }));
+      if (state.highlight) {
+        $$(`[data-id="${state.highlight}"]`, $("#listOut")).forEach((el) => el.classList.add("just-added"));
+        state.highlight = null;
+      }
     };
     draw();
     $("#fq").oninput = (e) => { state.f.q = e.target.value; draw(); };
@@ -360,7 +372,7 @@
     $("#fc").onchange = (e) => { state.f.channel = e.target.value; draw(); };
     $("#fp").onchange = (e) => { state.f.person = e.target.value; draw(); };
     $$("[data-stat]").forEach((b) => (b.onclick = () => {
-      state.f.stage = state.f.stage === b.dataset.stat ? "open" : b.dataset.stat;
+      state.f.stage = state.f.stage === b.dataset.stat ? "all" : b.dataset.stat;
       $("#fs").value = state.f.stage;
       draw();
     }));
@@ -575,11 +587,14 @@
           lead_date: isoDate(new Date()),
         });
         if ($("#a_slack").checked) {
-          S.notify(lead.id).then((r) => { if (r && r.slack && r.slack !== "sent" && r.slack !== "demo") toast(r.slack, true); }).catch(() => toast("Lead saved, but Slack couldn't be reached.", true));
+          S.notify(lead.id).then((r) => { if (r && r.slack && r.slack !== "sent" && r.slack !== "demo") toast(r.slack, true); }).catch((er) => toast("Lead saved, but Slack couldn't be reached: " + friendly(er), true));
         }
         close();
         toast("Lead added");
-        location.hash = "lead=" + lead.id;
+        // Back to the full list, newest first, with the new lead highlighted
+        state.f = { ...DEFAULT_FILTERS };
+        state.highlight = lead.id;
+        if (location.hash && location.hash !== "#") location.hash = ""; else route();
       } catch (ex) { e.target.disabled = false; fail(ex); }
     };
   }

@@ -116,13 +116,23 @@ function slackText(kind: string, lead: Record<string, unknown>, extra = "") {
   return lines.filter(Boolean).join("\n");
 }
 
+// The project's secret key. Newer Supabase projects provide it as
+// SUPABASE_SECRET_KEYS ({"default": "sb_secret_..."}); older ones as
+// SUPABASE_SERVICE_ROLE_KEY.
+function serviceKey() {
+  try {
+    const keys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}");
+    const k = keys.default || Object.values(keys)[0];
+    if (k) return String(k);
+  } catch { /* fall back below */ }
+  return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Use POST." }, 405);
 
-  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
-    auth: { persistSession: false },
-  });
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey(), { auth: { persistSession: false } });
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return json({ error: "Send JSON." }, 400); }
 
@@ -131,12 +141,17 @@ Deno.serve(async (req) => {
     // From the Leads page: tell Slack about a lead someone just added
     // ---------------------------------------------------------------
     if (body.notify_lead_id) {
-      const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-      const { data: u } = await admin.auth.getUser(token);
+      // Acts as the signed-in person, so the database security rules decide
+      const auth = req.headers.get("Authorization") ?? "";
+      const asUser = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: auth } }, auth: { persistSession: false },
+      });
+      const { data: u } = await asUser.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
       if (!u?.user) return json({ error: "Please sign in again." }, 401);
-      const { data: me } = await admin.from("profiles").select("full_name, email, role, active").eq("id", u.user.id).single();
+      const { data: me, error: meErr } = await asUser.from("profiles").select("full_name, email, role, active").eq("id", u.user.id).single();
+      if (meErr) console.error("profile lookup", meErr);
       if (!me || !me.active) return json({ error: "You don't have permission to do that." }, 403);
-      const { data: lead } = await admin.from("leads").select("*").eq("id", body.notify_lead_id).single();
+      const { data: lead } = await asUser.from("leads").select("*").eq("id", body.notify_lead_id).single();
       if (!lead) return json({ error: "Lead not found." }, 404);
       if (me.role !== "admin" && lead.assigned_to !== u.user.id) return json({ error: "You don't have permission to do that." }, 403);
       const url = leadUrl(lead.id, String(body.app_url || ""));
