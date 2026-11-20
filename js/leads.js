@@ -234,6 +234,8 @@
     return new Date(y, m - 1, dd).toLocaleDateString("en-US", { month: "short", day: "numeric", year: y === new Date().getFullYear() ? undefined : "numeric" });
   };
   const niceTime = (ts) => new Date(ts).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const stagePick = (l) => `<select class="stage-pick stage ${esc(l.stage)}" data-of="${esc(l.id)}" aria-label="Stage for ${esc(displayName(l))}">${STAGES.map(([k, v]) => `<option value="${k}" ${l.stage === k ? "selected" : ""}>${esc(v)}</option>`).join("")}</select>`;
+  const qbTick = (l) => `<button type="button" class="qb-tick ${l.in_quickbooks ? "on" : ""}" data-of="${esc(l.id)}" aria-pressed="${l.in_quickbooks ? "true" : "false"}" title="Entered in QuickBooks: click to change">${l.in_quickbooks ? "✓" : ""}</button>`;
   const stageBadge = (s) => `<span class="stage ${esc(s)}">${esc(STAGE[s] || s)}</span>`;
   const telHref = (p) => String(p || "").replace(/[^\d+]/g, "");
   const linkify = (t) => esc(t).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u.includes("drive.google.com") ? "Open file in Google Drive" : u}</a>`);
@@ -332,13 +334,17 @@
     const L = state.leads;
     const monthStart = isoDate(new Date()).slice(0, 7);
     const count = (fn) => L.filter(fn).length;
-    const stats = [
+    const statList = () => [
       ["new", "New", "Need a first call", count((l) => l.stage === "new"), "pink"],
       ["intake_sent", "Waiting on intake", "Form sent, not back", count((l) => l.stage === "intake_sent"), ""],
       ["intake_received", "Ready to schedule", "Intake in, no visit yet", count((l) => l.stage === "intake_received"), "green"],
       ["proposal_sent", "Proposal sent", "Waiting on a yes", count((l) => l.stage === "proposal_sent"), "brown"],
       ["won", "Won this month", "", count((l) => l.stage === "won" && l.won_at && isoDate(new Date(l.won_at)).slice(0, 7) === monthStart), "green"],
     ];
+    const statsHtml = () => statList().map(([k, label, sub, n, color]) => `
+        <button type="button" class="stat clickable ${color} ${state.f.stage === k ? "on" : ""}" data-stat="${k}">
+          <div class="label">${label}</div><div class="num">${n}</div>${sub ? `<div class="sub">${sub}</div>` : ""}
+        </button>`).join("");
     const f = state.f;
     $("#view").innerHTML = `
       <div class="page-head">
@@ -348,11 +354,7 @@
           <button type="button" id="addBtn">+ Add a lead</button>
         </div>
       </div>
-      <div class="stat-row">${stats.map(([k, label, sub, n, color]) => `
-        <button type="button" class="stat clickable ${color} ${f.stage === k ? "on" : ""}" data-stat="${k}">
-          <div class="label">${label}</div><div class="num">${n}</div>${sub ? `<div class="sub">${sub}</div>` : ""}
-        </button>`).join("")}
-      </div>
+      <div class="stat-row" id="statRow">${statsHtml()}</div>
       <div class="card" style="padding-bottom:12px">
         <div class="lead-filters">
           <div class="wide"><label for="fq">Search leads</label><input id="fq" type="search" placeholder="Search by name, phone, email, address or notes" value="${esc(f.q)}"></div>
@@ -401,16 +403,45 @@
             <td><div class="who">${esc(displayName(l))}</div><div class="sub">${esc(l.contact_name && l.contact_name !== displayName(l) ? l.contact_name : "")}${l.address ? `${l.contact_name && l.contact_name !== displayName(l) ? " · " : ""}${esc(l.address)}` : ""}</div></td>
             <td><div>${esc(l.phone)}</div><div class="sub">${esc(l.email)}</div></td>
             <td>${esc(CHANNEL[l.channel] || l.channel)}${l.heard_about ? `<div class="sub">${esc(l.heard_about)}</div>` : ""}</td>
-            <td>${stageBadge(l.stage)}${l.assigned_to ? `<div class="sub">${esc(personName(l.assigned_to))}</div>` : ""}</td>
+            <td>${stagePick(l)}${l.assigned_to ? `<div class="sub">${esc(personName(l.assigned_to))}</div>` : ""}</td>
             <td class="next">${esc(l.next_steps)}</td>
-            <td class="qb">${l.in_quickbooks ? "✓" : ""}</td></tr>`).join("")}</tbody></table>
+            <td class="qb">${qbTick(l)}</td></tr>`).join("")}</tbody></table>
         </div>
         <div class="lead-cards">${rows.map((l) => `<div class="lead-card" data-id="${esc(l.id)}">
           <div class="top"><div><div class="who">${esc(displayName(l))}</div>
             <div class="sub">${esc([l.contact_name !== displayName(l) ? l.contact_name : "", l.phone].filter(Boolean).join(" · "))}</div>
-            <div class="sub">${esc(niceDate(l.lead_date))} · ${esc(CHANNEL[l.channel] || l.channel)}</div></div>${stageBadge(l.stage)}</div>
-          ${l.next_steps ? `<div class="next">${esc(l.next_steps)}</div>` : ""}</div>`).join("")}</div>`;
-      $$("[data-id]", $("#listOut")).forEach((el) => (el.onclick = () => openCard(el.dataset.id).catch(fail)));
+            <div class="sub">${esc(niceDate(l.lead_date))} · ${esc(CHANNEL[l.channel] || l.channel)}</div></div>${stagePick(l)}</div>
+          ${l.next_steps ? `<div class="next">${esc(l.next_steps)}</div>` : ""}
+          <div class="card-qb">${qbTick(l)} <span class="small muted">Entered in QB</span></div></div>`).join("")}</div>`;
+      $$("[data-id]", $("#listOut")).forEach((el) => (el.onclick = (e) => {
+        if (e.target.closest(".stage-pick, .qb-tick")) return; // quick edits don't open the card
+        openCard(el.dataset.id).catch(fail);
+      }));
+      // Quick edits right in the list: stage and Entered in QB
+      const quickSave = async (id, patch, el) => {
+        const l = L.find((x) => x.id === id);
+        try {
+          const saved = await S.update(id, patch);
+          Object.assign(l, saved);
+          $("#statRow").innerHTML = statsHtml();
+          bindStats();
+          toast("Saved");
+        } catch (e) { fail(e); draw(); }
+      };
+      $$(".stage-pick", $("#listOut")).forEach((sel) => {
+        sel.onclick = (e) => e.stopPropagation();
+        sel.onchange = () => {
+          const v = sel.value;
+          $$(`.stage-pick[data-of="${sel.dataset.of}"]`, $("#listOut")).forEach((x) => { x.value = v; x.className = "stage-pick stage " + v; });
+          quickSave(sel.dataset.of, { stage: v });
+        };
+      });
+      $$(".qb-tick", $("#listOut")).forEach((b) => (b.onclick = (e) => {
+        e.stopPropagation();
+        const on = b.getAttribute("aria-pressed") !== "true";
+        $$(`.qb-tick[data-of="${b.dataset.of}"]`, $("#listOut")).forEach((x) => { x.setAttribute("aria-pressed", on); x.classList.toggle("on", on); x.textContent = on ? "✓" : ""; });
+        quickSave(b.dataset.of, { in_quickbooks: on });
+      }));
       $$("[data-sort]", $("#listOut")).forEach((b) => (b.onclick = () => {
         const k = b.dataset.sort;
         if (state.f.sort === k) state.f.dir = state.f.dir === "asc" ? "desc" : "asc";
@@ -429,11 +460,14 @@
     $("#fc").onchange = (e) => { state.f.channel = e.target.value; draw(); };
     $("#fp").onchange = (e) => { state.f.person = e.target.value; draw(); };
     $("#fo").onchange = (e) => { state.f.sort = e.target.value; state.f.dir = FIRST_DIR[e.target.value] || "asc"; draw(); };
-    $$("[data-stat]").forEach((b) => (b.onclick = () => {
-      state.f.stage = state.f.stage === b.dataset.stat ? "all" : b.dataset.stat;
-      $("#fs").value = state.f.stage;
-      draw();
-    }));
+    function bindStats() {
+      $$("[data-stat]").forEach((b) => (b.onclick = () => {
+        state.f.stage = state.f.stage === b.dataset.stat ? "all" : b.dataset.stat;
+        $("#fs").value = state.f.stage;
+        draw();
+      }));
+    }
+    bindStats();
     $("#addBtn").onclick = () => openAdd();
     $("#exportBtn").onclick = () => exportExcel(L.filter(matches)).catch(fail);
   }
