@@ -64,7 +64,11 @@
       },
       async notify(lead_id) {
         const { data, error } = await sb.functions.invoke("leads-inbox", { body: { notify_lead_id: lead_id, app_url: appUrl() } });
-        if (error) throw error;
+        if (error) {
+          let msg = error.message;
+          try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch (e) { /* keep the generic message */ }
+          throw new Error(msg);
+        }
         return data;
       },
     };
@@ -575,7 +579,7 @@
           lead_date: isoDate(new Date()),
         });
         if ($("#a_slack").checked) {
-          S.notify(lead.id).then((r) => { if (r && r.slack && r.slack !== "sent" && r.slack !== "demo") toast(r.slack, true); }).catch(() => toast("Lead saved, but Slack couldn't be reached.", true));
+          S.notify(lead.id).then((r) => { if (r && r.slack && r.slack !== "sent" && r.slack !== "demo") toast(r.slack, true); }).catch((er) => toast("Lead saved, but Slack couldn't be reached: " + friendly(er), true));
         }
         close();
         toast("Lead added");
