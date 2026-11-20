@@ -836,44 +836,56 @@
   // =====================================================================
   function openAdd() {
     let channel = "phone";
+    const blank = { details: {} };
+    const grid = (fields) => {
+      const parts = []; let run = [];
+      const flush = () => { if (run.length) parts.push(`<div class="grid2">${run.join("")}</div>`); run = []; };
+      fields.forEach((f) => { const h = formInput(blank, f, {}); if (f.area) { flush(); parts.push(h); } else run.push(h); });
+      flush();
+      return parts.join("");
+    };
+    const callFields = CALL_FIELDS.filter((f) => f.k === "request" || f.k === "company");
+    const [first, ...rest] = FORM;
     const { m, close } = modal(`
       <h2>Add a lead</h2>
       <div class="field"><label>How did it come in?</label><div class="channel-pick">${CHANNELS.filter(([k]) => k !== "intake_form").map(([k, v]) => `<button type="button" data-ch="${k}" class="${k === channel ? "on" : ""}">${v}</button>`).join("")}</div></div>
-      <div class="grid2">
-        <div class="field"><label for="a_name">Name <span class="req">*</span></label><input id="a_name" autocomplete="off"></div>
-        <div class="field"><label for="a_phone">Phone</label><input id="a_phone" type="tel" autocomplete="off"></div>
-      </div>
-      <div class="grid2">
-        <div class="field"><label for="a_email">Email</label><input id="a_email" type="email" autocomplete="off"></div>
-        <div class="field"><label for="a_company">Company (if any)</label><input id="a_company" autocomplete="off"></div>
-      </div>
-      <div class="field"><label for="a_address">Property address</label><input id="a_address" autocomplete="off" placeholder="Start typing and pick from the list"></div>
-      <div class="field"><label for="a_request">What do they need?</label><textarea id="a_request" rows="4" placeholder="Paste the voicemail, text or email, or type a summary"></textarea></div>
-      <div class="grid2">
-        <div class="field"><label for="a_heard">Heard about us / referred by</label><input id="a_heard" autocomplete="off"></div>
-        <div class="field"><label for="a_next">Next steps</label><input id="a_next" autocomplete="off" placeholder="e.g. Send intake form"></div>
-      </div>
+      <h3 class="form-h">${esc(first.title)}</h3>
+      ${grid(first.fields)}
+      <h3 class="form-h">From the call</h3>
+      ${grid(callFields)}
+      <div class="field"><label for="a_next">Next steps</label><input id="a_next" autocomplete="off" placeholder="e.g. Send intake form"></div>
+      <p class="small muted" style="margin:14px 0 4px">The rest of the intake form. Open a section to fill it in now, or add it later from Edit.</p>
+      ${rest.map((s) => `<details class="add-sec"><summary>${esc(s.title)}</summary>${grid(s.fields)}</details>`).join("")}
       <p class="error-text hidden" id="a_err"></p>
-      <label class="check" style="margin-bottom:14px"><input type="checkbox" id="a_slack" checked> Let the team know in Slack</label>
-      <div class="btn-row" style="justify-content:flex-end"><button class="secondary" type="button" data-no>Cancel</button><button type="button" data-save>Save lead</button></div>`);
+      <label class="check" style="margin:14px 0"><input type="checkbox" id="a_slack" checked> Let the team know in Slack</label>
+      <div class="btn-row" style="justify-content:flex-end"><button class="secondary" type="button" data-no>Cancel</button><button type="button" data-save>Save lead</button></div>`, true);
+    m.classList.add("add-lead");
+    $('label[for="contact_name"]', m).insertAdjacentHTML("beforeend", ' <span class="req">*</span>');
+    $("#address", m).placeholder = "Start typing and pick from the list";
+    $("#request", m).placeholder = "Paste the voicemail, text or email, or type a summary";
+    $$("[data-copy]", m).forEach((b) => b.remove());
     $$("[data-ch]", m).forEach((b) => (b.onclick = () => { channel = b.dataset.ch; $$("[data-ch]", m).forEach((x) => x.classList.toggle("on", x === b)); }));
     $("[data-no]", m).onclick = close;
-    addressLookup($("#a_address", m));
-    $("#a_email", m).addEventListener("blur", (ev) => {
-      const ok = EMAIL_OK(ev.target.value);
-      ev.target.classList.toggle("invalid", !ok);
-      const err = $("#a_err", m);
+    addressLookup($("#address", m));
+    const err = $("#a_err", m);
+    $$('input[type="email"]', m).forEach((el) => el.addEventListener("blur", () => {
+      const ok = EMAIL_OK(el.value);
+      el.classList.toggle("invalid", !ok);
       if (!ok) { err.textContent = BAD_EMAIL; err.classList.remove("hidden"); }
-      else if (err.textContent === BAD_EMAIL) err.classList.add("hidden");
-    });
-    setTimeout(() => $("#a_name").focus(), 50);
+      else if (err.textContent === BAD_EMAIL && !$$("input.invalid", m).length) err.classList.add("hidden");
+    }));
+    setTimeout(() => $("#contact_name", m).focus(), 50);
+    const val = (k) => { const el = $("#" + k, m); return el ? el.value.trim() : ""; };
     $("[data-save]", m).onclick = async (e) => {
-      const name = $("#a_name").value.trim();
-      const phone = $("#a_phone").value.trim();
-      const email = $("#a_email").value.trim().toLowerCase();
-      const err = $("#a_err");
+      const name = val("contact_name");
+      const phone = val("phone");
+      const email = val("email").toLowerCase();
       if (!name && !phone && !email) { err.textContent = "Add at least a name, phone or email."; err.classList.remove("hidden"); return; }
-      if (!EMAIL_OK(email)) { $("#a_email").classList.add("invalid"); $("#a_email").focus(); err.textContent = BAD_EMAIL; err.classList.remove("hidden"); return; }
+      const bad = $$('input[type="email"]', m).find((el) => !EMAIL_OK(el.value));
+      if (bad) {
+        bad.classList.add("invalid"); const sec = bad.closest("details"); if (sec) sec.open = true; bad.focus();
+        err.textContent = BAD_EMAIL; err.classList.remove("hidden"); return;
+      }
       // Already have them? Offer to open the existing lead instead.
       const digits = (s) => String(s || "").replace(/\D/g, "").slice(-10);
       const dupe = state.leads.find((l) => (email && l.email && l.email.toLowerCase() === email) || (digits(phone).length === 10 && digits(l.phone) === digits(phone)));
@@ -885,16 +897,19 @@
         return;
       }
       e.target.disabled = true;
-      const company = $("#a_company").value.trim();
+      // Questions with their own column go there; the rest of the form goes in details
+      const row = { channel, lead_date: isoDate(new Date()), next_steps: val("a_next") };
+      const details = {};
+      [...FORM.flatMap((s) => s.fields), ...callFields].forEach((f) => {
+        const v = f.k === "email" ? email : val(f.k);
+        if (f.col) row[f.k] = v; else if (v) details[f.k] = v;
+      });
+      row.details = details;
       const last = name.split(/\s+/).pop();
+      if (!row.project_name) row.project_name = row.company || (last ? `${last} Residence` : "");
       try {
-        const lead = await S.add({
-          channel, contact_name: name, phone, email, company, address: $("#a_address").value.trim(),
-          request: $("#a_request").value.trim(), heard_about: $("#a_heard").value.trim(), next_steps: $("#a_next").value.trim(),
-          project_name: company || (last ? `${last} Residence` : ""),
-          lead_date: isoDate(new Date()),
-        });
-        if ($("#a_slack").checked) {
+        const lead = await S.add(row);
+        if ($("#a_slack", m).checked) {
           S.notify(lead.id).then((r) => { if (r && r.slack && r.slack !== "sent" && r.slack !== "demo") toast(r.slack, true); }).catch((er) => toast("Lead saved, but Slack couldn't be reached: " + friendly(er), true));
         }
         close();
