@@ -153,3 +153,16 @@ button.tip-act:hover { filter: none; background: #F7F7F7; }
   .hist-list li { grid-template-columns: 1fr auto; }
   .hist-pill { grid-column: 1 / -1; }
 }
+
+/* "How this is worked out" */
+.cash-tile[data-explain] { cursor: pointer; display: flex; flex-direction: column; transition: box-shadow 0.15s; }
+.cash-tile[data-explain]:hover, .cash-tile[data-explain]:focus-visible { box-shadow: 0 3px 12px rgba(0,0,0,0.1); outline: none; }
+.cash-tile[data-explain]:focus-visible { outline: 2px solid var(--leaf); }
+.tile-how { margin-top: auto; padding-top: 8px; font-size: 0.75rem; font-weight: 600; color: var(--green); }
+.how p { margin: 0 0 8px; font-size: 0.9rem; }
+.how-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; margin-bottom: 6px; }
+.how-table td { padding: 7px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.how-table td span { display: block; font-size: 0.76rem; color: var(--gray); }
+.how-table td.num { text-align: right; white-space: nowrap; font-weight: 600; }
+.how-table td.num.neg { color: #B3261E; }
+.mlegend button.link-btn { padding: 0 2px; font-size: inherit; }

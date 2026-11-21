@@ -299,7 +299,80 @@
     const handled = new Set((actions || []).map((a) => a.todo_key));
     const open = tips.filter((t) => !handled.has(t.key));
 
+    // What's behind each number, for the "How this is worked out" panels
+    const rowInv = (x) => [`${x.name}`, x.open, `${x.num || x.type} · due ${niceDate(x.due)}${late(x) > 0 ? ` · ${plural(late(x), "day")} late` : late(x) === 0 ? " · due today" : ` · in ${plural(-late(x), "day")}`}`];
+    const byDue = (a, b) => dayTs(a.due) - dayTs(b.due);
+    const arAsOf = f.ar_detail && f.ar_detail.as_of, apAsOf = f.ap_detail && f.ap_detail.as_of;
+    const explain = {
+      owed: {
+        title: "Owed to you", total: sum(invoices), source: `QuickBooks A/R Aging Detail, as of ${niceDate(arAsOf)}`,
+        how: [
+          `Every invoice in the A/R Aging Detail that still has a balance, added up: ${money(sum(invoices))} across ${plural(invoices.length, "invoice")}.`,
+          `"Past due" is the invoices whose due date has passed: ${money(sum(lateInv))}.`,
+          credits.length ? `QuickBooks' own total is ${money(f.ar_detail.total)}. That's lower because it subtracts ${money(-sum(credits))} of customer payments that aren't matched to an invoice yet (listed at the bottom). Those are money you already have, so they're not counted as owed.` : "",
+        ],
+        sections: [
+          { h: "Past due", rows: lateInv.slice().sort(byDue).map(rowInv) },
+          { h: "Not due yet", rows: invoices.filter((x) => late(x) <= 0).sort(byDue).map(rowInv) },
+          credits.length ? { h: "Payments not matched to an invoice", rows: credits.map((x) => [x.name, x.open, `${x.type} on ${niceDate(x.date)}`]) } : null,
+        ],
+        link: QBO + "invoices", linkLabel: "Open invoices in QuickBooks ↗",
+      },
+      owe: {
+        title: "Bills you owe", total: sum(bills), source: `QuickBooks A/P Aging Detail, as of ${niceDate(apAsOf)}`,
+        how: [
+          `Every bill in the A/P Aging Detail that still has a balance, added up: ${money(sum(bills))} across ${plural(bills.length, "bill")}.`,
+          `"Past due" is the bills whose due date has passed: ${money(sum(lateBills))}.`,
+          billCredits.length ? `QuickBooks' own total is ${money(f.ap_detail.total)}. That's lower because it subtracts ${money(-sum(billCredits))} of bill payments that aren't matched to a bill (listed at the bottom). Some bills above may already be paid by those.` : "",
+        ],
+        sections: [
+          { h: "Past due", rows: lateBills.slice().sort(byDue).map(rowInv) },
+          { h: "Not due yet", rows: bills.filter((x) => late(x) <= 0).sort(byDue).map(rowInv) },
+          billCredits.length ? { h: "Payments not matched to a bill", rows: billCredits.map((x) => [x.name, x.open, `${x.num || x.type} on ${niceDate(x.date)}`]) } : null,
+        ],
+        link: QBO + "bills", linkLabel: "Open bills in QuickBooks ↗",
+      },
+      soon: {
+        title: "Next 2 weeks", total: sum(soonInv) - sum(soonBills), source: `QuickBooks A/R and A/P Aging Detail, as of ${niceDate(arAsOf || apAsOf)}`,
+        how: [
+          `Invoices coming due in the next 14 days (${money(sum(soonInv))}) minus bills coming due in the next 14 days (${money(sum(soonBills))}) = ${money(sum(soonInv) - sum(soonBills))}.`,
+          `Anything already late is left out, because there's no telling when it will be paid. Late invoices total ${money(sum(lateInv))} and late bills ${money(sum(lateBills))}; they're in the other two boxes.`,
+          "This is a rough guide to the next two weeks, not a promise: it assumes clients pay on time and doesn't include payroll or card payments.",
+        ],
+        sections: [
+          { h: "Coming in", rows: soonInv.slice().sort(byDue).map(rowInv) },
+          { h: "Going out", rows: soonBills.slice().sort(byDue).map(rowInv) },
+        ],
+        link: QBO + "invoices", linkLabel: "Open invoices in QuickBooks ↗",
+      },
+      bank: bs ? {
+        title: "In the bank", total: bs.total_bank, source: `QuickBooks Balance Sheet, as of ${niceDate(bs.as_of)}`,
+        how: [
+          `The "Total Bank Accounts" line of the Balance Sheet: ${money(bs.total_bank)}. This is what QuickBooks shows, so it's only as current as the last bank feed and reconciliation.`,
+          bs.undeposited ? `Undeposited Funds (${money(bs.undeposited)}) is money received but not yet recorded as deposited. It isn't in the bank total until it's deposited.` : "",
+          bs.total_cards ? `Credit cards (${money(bs.total_cards)}) are money owed, not money on hand, so they're listed separately.` : "",
+        ],
+        sections: [
+          { h: "Bank accounts", rows: Object.entries(bs.bank || {}).map(([n, v]) => [n, v, ""]) },
+          bs.undeposited ? { h: "Waiting to be deposited", rows: [["Undeposited Funds", bs.undeposited, ""]] } : null,
+          bs.total_cards ? { h: "Credit cards (owed)", rows: Object.entries(bs.cards || {}).map(([n, v]) => [n, v, ""]) } : null,
+        ],
+        link: QBO + "homepage", linkLabel: "Open QuickBooks ↗",
+      } : null,
+      chart: pl ? {
+        title: "Money in and out by month", source: `QuickBooks Profit and Loss, ${pl.basis === "cash" ? "cash basis" : "accrual basis"}, by month, as of ${niceDate(pl.as_of)}`,
+        how: [
+          `"Came in" is Total Income for the month. "Went out" is Total Cost of Goods Sold plus Total Expenses. What's left is Net Income.`,
+          pl.basis === "cash" ? "It's cash basis, so each month shows money actually received and paid that month, not what was invoiced or billed." : "",
+          "A bill that hasn't been paid yet doesn't show up until it's paid, so a month can look better than it really was.",
+        ],
+        sections: [{ h: "By month", rows: hist.slice(-13).reverse().map((x) => [x.m, x.net, `in ${money(x.inc)} · out ${money(x.out)}`]) }],
+        link: QBO + "reportv2?token=PANDL", linkLabel: "Open the Profit and Loss in QuickBooks ↗",
+      } : null,
+    };
+
     return {
+      explain,
       asOf,
       owed: sum(invoices), owedLate: sum(lateInv), credits: -sum(credits),
       owe: sum(bills), oweLate: sum(lateBills), billCredits: -sum(billCredits),
@@ -496,6 +569,11 @@
       } catch (e) { b.disabled = false; toast("Couldn't save that: " + e.message); }
     }));
     $$("[data-history]").forEach((b) => (b.onclick = () => openHistory(cash.history)));
+    $$("[data-explain]").forEach((b) => {
+      const go = () => { const x = cash.explain[b.dataset.explain]; if (x) openExplain(x); };
+      b.onclick = go;
+      b.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
+    });
     $$("[data-att]").forEach((b) => (b.onclick = () => {
       const a = ATT.find((x) => x.k === b.dataset.att);
       openList(a);
@@ -515,14 +593,14 @@
       <h2 class="dash-h">Cash flow <span class="muted small">From QuickBooks, as of ${esc(niceDate(k.asOf))}</span></h2>
       ${stale ? `<p class="cash-stale">These QuickBooks numbers are more than 3 days old. Check that the morning report emails are still being sent.</p>` : ""}
       <div class="cash-grid">
-        <div class="card wk cash-tile"><div class="wk-label">Owed to you</div><div class="wk-num">${k.hasAr ? money(k.owed) : "–"}</div>
-          <p class="wk-sub">${k.hasAr ? `<b class="neg">${money(k.owedLate)} past due</b>${k.credits ? ` · ${money(k.credits)} in credits to apply` : ""}` : "Needs the A/R Aging Detail"}</p></div>
-        <div class="card wk cash-tile"><div class="wk-label">Bills you owe</div><div class="wk-num brown">${k.hasAp ? money(k.owe) : "–"}</div>
-          <p class="wk-sub">${k.hasAp ? `<b class="neg">${money(k.oweLate)} past due</b>${k.billCredits ? ` · ${money(k.billCredits)} paid but not matched` : ""}` : "Needs the A/P Aging Detail"}</p></div>
-        <div class="card wk cash-tile"><div class="wk-label">Next 2 weeks</div><div class="wk-num ${k.soonIn - k.soonOut < 0 ? "neg" : ""}">${k.soonIn - k.soonOut < 0 ? "−" : ""}${money(Math.abs(k.soonIn - k.soonOut))}</div>
-          <p class="wk-sub">${money(k.soonIn)} coming due in · ${money(k.soonOut)} bills due out</p><p class="wk-note">Not counting anything already late</p></div>
-        <div class="card wk cash-tile"><div class="wk-label">In the bank</div><div class="wk-num">${k.bank != null ? money(k.bank) : "–"}</div>
-          <p class="wk-sub">${k.bank != null ? `${k.undeposited ? `${money(k.undeposited)} waiting to be deposited · ` : ""}${k.cards ? `${money(k.cards)} on credit cards` : `As of ${esc(niceDate(k.bankAsOf))}`}` : "Shows once the Balance Sheet email arrives"}</p></div>
+        <div class="card wk cash-tile" data-explain="owed" role="button" tabindex="0" aria-label="How this is worked out"><div class="wk-label">Owed to you</div><div class="wk-num">${k.hasAr ? money(k.owed) : "–"}</div>
+          <p class="wk-sub">${k.hasAr ? `<b class="neg">${money(k.owedLate)} past due</b>${k.credits ? ` · ${money(k.credits)} in credits to apply` : ""}` : "Needs the A/R Aging Detail"}</p><span class="tile-how">How this is worked out ›</span></div>
+        <div class="card wk cash-tile" data-explain="owe" role="button" tabindex="0" aria-label="How this is worked out"><div class="wk-label">Bills you owe</div><div class="wk-num brown">${k.hasAp ? money(k.owe) : "–"}</div>
+          <p class="wk-sub">${k.hasAp ? `<b class="neg">${money(k.oweLate)} past due</b>${k.billCredits ? ` · ${money(k.billCredits)} paid but not matched` : ""}` : "Needs the A/P Aging Detail"}</p><span class="tile-how">How this is worked out ›</span></div>
+        <div class="card wk cash-tile" data-explain="soon" role="button" tabindex="0" aria-label="How this is worked out"><div class="wk-label">Next 2 weeks</div><div class="wk-num ${k.soonIn - k.soonOut < 0 ? "neg" : ""}">${k.soonIn - k.soonOut < 0 ? "−" : ""}${money(Math.abs(k.soonIn - k.soonOut))}</div>
+          <p class="wk-sub">${money(k.soonIn)} coming due in · ${money(k.soonOut)} bills due out</p><p class="wk-note">Not counting anything already late</p><span class="tile-how">How this is worked out ›</span></div>
+        <div class="card wk cash-tile" data-explain="bank" role="button" tabindex="0" aria-label="How this is worked out"><div class="wk-label">In the bank</div><div class="wk-num">${k.bank != null ? money(k.bank) : "–"}</div>
+          <p class="wk-sub">${k.bank != null ? `${k.undeposited ? `${money(k.undeposited)} waiting to be deposited · ` : ""}${k.cards ? `${money(k.cards)} on credit cards` : `As of ${esc(niceDate(k.bankAsOf))}`}` : "Shows once the Balance Sheet email arrives"}</p><span class="tile-how">How this is worked out ›</span></div>
       </div>
       <div class="dash-two cash-two">
         <div class="card">
@@ -539,10 +617,30 @@
               <div class="mbars"><i class="in" style="--h:${(Math.max(0, x.inc) / max) * 100}%"></i><i class="out" style="--h:${(Math.max(0, x.out) / max) * 100}%"></i></div>
               <span class="mnet ${x.net < 0 ? "neg" : ""}">${Math.round(x.net / 1000) < 0 ? "−" : ""}${Math.abs(Math.round(x.net / 1000))}k</span>
               <span class="mlabel">${esc(short(x.m))}</span></div>`).join("")}</div>
-            <p class="small muted mlegend"><i class="in"></i> Came in <i class="out"></i> Went out. The number under each month is what was left (cash basis). The last 3 months averaged ${money(k.avgIn)} in and ${money(k.avgOut)} out.</p>`
+            <p class="small muted mlegend"><i class="in"></i> Came in <i class="out"></i> Went out. The number under each month is what was left (cash basis). The last 3 months averaged ${money(k.avgIn)} in and ${money(k.avgOut)} out. <button type="button" class="link-btn" data-explain="chart">How this is worked out</button></p>`
             : `<p class="muted small">Shows once the monthly Profit and Loss arrives.</p>`}
         </div>
       </div>`;
+  }
+
+  function openExplain(x) {
+    const root = $("#modalRoot");
+    const amt = (v) => `${v < 0 ? "−" : ""}${money(Math.abs(v))}`;
+    const secs = x.sections.filter((sec) => sec && sec.rows.length);
+    root.innerHTML = `<div class="modal-back"><div class="modal wide" role="dialog" aria-modal="true">
+      <div class="lc-head"><div><p class="eyebrow">How this is worked out</p><h2 class="lc-title">${esc(x.title)}${x.total != null ? ` · ${esc(amt(x.total))}` : ""}</h2>
+        <p class="small muted" style="margin:2px 0 0">From: ${esc(x.source)}</p></div>
+        <button type="button" class="lc-x secondary" data-close aria-label="Close">✕</button></div>
+      <div class="how">${x.how.filter(Boolean).map((t) => `<p>${esc(t)}</p>`).join("")}</div>
+      ${secs.map((sec) => `<h3 class="dash-h3">${esc(sec.h)} <span class="muted small">${plural(sec.rows.length, "line")} · ${esc(amt(sec.rows.reduce((t, r) => t + Number(r[1] || 0), 0)))}</span></h3>
+        <table class="how-table"><tbody>${sec.rows.map(([a, v, sub]) => `<tr><td><strong>${esc(a)}</strong>${sub ? `<span>${esc(sub)}</span>` : ""}</td><td class="num ${v < 0 ? "neg" : ""}">${esc(amt(v))}</td></tr>`).join("")}</tbody></table>`).join("")}
+      <div class="btn-row" style="justify-content:flex-end;margin-top:16px"><a class="btn secondary" href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.linkLabel)}</a></div>
+    </div></div>`;
+    const close = () => { root.innerHTML = ""; document.removeEventListener("keydown", onKey); };
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", onKey);
+    $("[data-close]", root).onclick = close;
+    $(".modal-back", root).onclick = (e) => { if (e.target.classList.contains("modal-back")) close(); };
   }
 
   function openHistory(rows) {
