@@ -623,6 +623,134 @@
       </div>`;
   }
 
+  // =====================================================================
+  // Download the explanations: Excel (one sheet per number) or PDF
+  // =====================================================================
+  function loadScript(src) {
+    return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("Couldn't load the download tool.")); document.head.appendChild(s); });
+  }
+  function saveBlob(blob, name) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+  const cleanSecs = (x) => x.sections.filter((s) => s && s.rows.length);
+  const fileStamp = () => isoDate(new Date());
+
+  async function downloadExcel(list, name) {
+    if (!window.ExcelJS) await loadScript("vendor/exceljs.min.js");
+    const wb = new window.ExcelJS.Workbook();
+    wb.creator = "Harmony Horticulture";
+    const F = (o = {}) => ({ name: "Montserrat", size: 10, ...o });
+    const fill = (argb) => ({ type: "pattern", pattern: "solid", fgColor: { argb } });
+    list.forEach((x) => {
+      const ws = wb.addWorksheet(x.title.replace(/[\\/?*[\]:]/g, "").slice(0, 31));
+      ws.columns = [{ width: 46 }, { width: 52 }, { width: 16 }];
+      ws.mergeCells(1, 1, 1, 3);
+      const t = ws.getCell(1, 1);
+      t.value = x.title.toUpperCase() + (x.total != null ? `  ·  ${money(x.total)}` : "");
+      t.font = F({ size: 15, bold: true, color: { argb: "FFFFFFFF" } }); t.fill = fill("FF5F351B"); t.alignment = { vertical: "middle", indent: 1 };
+      ws.getRow(1).height = 30;
+      ws.mergeCells(2, 1, 2, 3);
+      ws.getCell(2, 1).value = `From ${x.source} · downloaded ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`;
+      ws.getCell(2, 1).font = F({ size: 9, color: { argb: "FF595959" } });
+      let r = 4;
+      ws.getCell(r, 1).value = "HOW THIS IS WORKED OUT"; ws.getCell(r, 1).font = F({ size: 9, bold: true, color: { argb: "FFF065A5" } }); r++;
+      x.how.filter(Boolean).forEach((p) => {
+        ws.mergeCells(r, 1, r, 3);
+        const c = ws.getCell(r, 1); c.value = p; c.font = F(); c.alignment = { wrapText: true, vertical: "top" };
+        ws.getRow(r).height = Math.max(16, Math.ceil(p.length / 110) * 15); r++;
+      });
+      cleanSecs(x).forEach((sec) => {
+        r++;
+        const head = ws.getRow(r);
+        [sec.h.toUpperCase(), "DETAIL", "AMOUNT"].forEach((h, i) => {
+          const c = head.getCell(i + 1); c.value = h; c.font = F({ size: 9, bold: true, color: { argb: "FFFFFFFF" } }); c.fill = fill("FF009344");
+          if (i === 2) c.alignment = { horizontal: "right" };
+        });
+        r++;
+        const first = r;
+        sec.rows.forEach(([a, v, sub], i) => {
+          const row = ws.getRow(r);
+          row.getCell(1).value = a; row.getCell(2).value = sub || ""; row.getCell(3).value = Number(v || 0);
+          row.eachCell({ includeEmpty: true }, (c) => { c.font = F({ size: 9 }); c.border = { bottom: { style: "thin", color: { argb: "FFE2E2E2" } } }; if (i % 2) c.fill = fill("FFF2F2F2"); });
+          row.getCell(3).numFmt = '"$"#,##0.00;[Red]-"$"#,##0.00';
+          r++;
+        });
+        const tot = ws.getRow(r);
+        tot.getCell(1).value = "Total"; tot.getCell(3).value = { formula: `SUM(C${first}:C${r - 1})` };
+        tot.getCell(1).font = F({ size: 9, bold: true }); tot.getCell(3).font = F({ size: 9, bold: true });
+        tot.getCell(3).numFmt = '"$"#,##0.00;[Red]-"$"#,##0.00';
+        tot.getCell(3).border = { top: { style: "thin", color: { argb: "FF5F351B" } } };
+        r++;
+      });
+    });
+    const buf = await wb.xlsx.writeBuffer();
+    saveBlob(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `${name} ${fileStamp()}.xlsx`);
+  }
+
+  async function downloadPdf(list, name) {
+    if (!window.jspdf) await loadScript("vendor/jspdf.umd.min.js");
+    const doc = new window.jspdf.jsPDF({ unit: "pt", format: "letter" });
+    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 48;
+    const BROWN = [95, 53, 27], PINK = [240, 101, 165], GREEN = [0, 147, 68], GRAY = [89, 89, 89], RED = [179, 38, 30];
+    const amt = (v) => `${v < 0 ? "-" : ""}${money(Math.abs(v))}`;
+    // jsPDF's built-in font has no "−" or "·" in some viewers; keep to plain characters
+    const plain = (t) => String(t).replace(/[−–]/g, "-").replace(/·/g, "-").replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/›|↗/g, "");
+    let y;
+    const footer = () => {
+      doc.setFillColor(...GREEN); doc.rect(0, H - 10, W, 10, "F");
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...GRAY);
+      doc.text(plain(`Harmony Horticulture · cash flow · downloaded ${new Date().toLocaleDateString("en-US")}`), M, H - 20);
+      doc.text(`Page ${doc.getNumberOfPages()}`, W - M, H - 20, { align: "right" });
+    };
+    const room = (h) => { if (y + h > H - 40) { footer(); doc.addPage(); y = M; } };
+    list.forEach((x, n) => {
+      if (n) { footer(); doc.addPage(); }
+      doc.setFillColor(...BROWN); doc.rect(0, 0, W, 64, "F");
+      doc.setFont("helvetica", "bold"); doc.setFontSize(17); doc.setTextColor(255, 255, 255);
+      doc.text(plain(x.title.toUpperCase() + (x.total != null ? `  -  ${amt(x.total)}` : "")), M, 40);
+      y = 86;
+      doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...GRAY);
+      doc.text(plain(`From ${x.source}`), M, y); y += 22;
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...PINK);
+      doc.text("HOW THIS IS WORKED OUT", M, y); y += 14;
+      doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(30, 30, 30);
+      x.how.filter(Boolean).forEach((p) => {
+        const lines = doc.splitTextToSize(plain(p), W - 2 * M);
+        room(lines.length * 13 + 6); doc.text(lines, M, y); y += lines.length * 13 + 6;
+      });
+      cleanSecs(x).forEach((sec) => {
+        const total = sec.rows.reduce((t, r) => t + Number(r[1] || 0), 0);
+        room(40); y += 10;
+        doc.setFillColor(...GREEN); doc.rect(M, y - 11, W - 2 * M, 16, "F");
+        doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.setTextColor(255, 255, 255);
+        doc.text(plain(sec.h.toUpperCase()), M + 6, y); doc.text(plain(`${sec.rows.length} lines - ${amt(total)}`), W - M - 6, y, { align: "right" });
+        y += 18;
+        sec.rows.forEach(([a, v, sub]) => {
+          const subLines = sub ? doc.splitTextToSize(plain(sub), W - 2 * M - 110) : [];
+          room(14 + subLines.length * 11 + 6);
+          doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.setTextColor(30, 30, 30);
+          doc.text(doc.splitTextToSize(plain(a), W - 2 * M - 110)[0], M + 6, y);
+          doc.setTextColor(...(v < 0 ? RED : [30, 30, 30])); doc.text(plain(amt(v)), W - M - 6, y, { align: "right" });
+          y += 12;
+          if (subLines.length) { doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...GRAY); doc.text(subLines, M + 6, y); y += subLines.length * 11; }
+          doc.setDrawColor(226, 226, 226); doc.line(M, y - 4, W - M, y - 4); y += 8;
+        });
+      });
+    });
+    footer();
+    saveBlob(doc.output("blob"), `${name} ${fileStamp()}.pdf`);
+  }
+  async function runDownload(kind, list, name, btn) {
+    const was = btn && btn.textContent;
+    if (btn) { btn.disabled = true; btn.textContent = "Preparing…"; }
+    try { await (kind === "pdf" ? downloadPdf : downloadExcel)(list, name); }
+    catch (e) { console.error(e); toast("Couldn't make the download: " + e.message); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = was; } }
+  }
+
   function openExplain(x) {
     const root = $("#modalRoot");
     const amt = (v) => `${v < 0 ? "−" : ""}${money(Math.abs(v))}`;
@@ -634,8 +762,12 @@
       <div class="how">${x.how.filter(Boolean).map((t) => `<p>${esc(t)}</p>`).join("")}</div>
       ${secs.map((sec) => `<h3 class="dash-h3">${esc(sec.h)} <span class="muted small">${plural(sec.rows.length, "line")} · ${esc(amt(sec.rows.reduce((t, r) => t + Number(r[1] || 0), 0)))}</span></h3>
         <table class="how-table"><tbody>${sec.rows.map(([a, v, sub]) => `<tr><td><strong>${esc(a)}</strong>${sub ? `<span>${esc(sub)}</span>` : ""}</td><td class="num ${v < 0 ? "neg" : ""}">${esc(amt(v))}</td></tr>`).join("")}</tbody></table>`).join("")}
-      <div class="btn-row" style="justify-content:flex-end;margin-top:16px"><a class="btn secondary" href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.linkLabel)}</a></div>
+      <div class="btn-row" style="justify-content:flex-end;margin-top:16px">
+        <button type="button" class="secondary" data-dl="xlsx">Download Excel</button>
+        <button type="button" class="secondary" data-dl="pdf">Download PDF</button>
+        <a class="btn secondary" href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.linkLabel)}</a></div>
     </div></div>`;
+    $$("[data-dl]", root).forEach((b) => (b.onclick = () => runDownload(b.dataset.dl, [x], `Harmony Horticulture ${x.title}`, b)));
     const close = () => { root.innerHTML = ""; document.removeEventListener("keydown", onKey); };
     const onKey = (e) => { if (e.key === "Escape") close(); };
     document.addEventListener("keydown", onKey);
