@@ -93,3 +93,4 @@ The response sheet and the existing #form-submissions messages keep working as t
 - QuickBooks emails these reports to accounting@harmonyhorticulture.com with "HH Dashboard" in the subject: A/R Aging Detail, A/P Aging Detail and Balance Sheet every weekday at 6 AM, and Profit and Loss (cash basis, columns by month) on Mondays.
 - A morning task downloads the Excel attachments, runs `python3 -I tools/qb_reports.py <files>` to get the SQL, loads it, and archives the emails.
 - The to-do list is worked out in the page from those numbers plus approved hours not yet exported from the Time Tracker.
+- Each cash to-do has Done and Dismiss. Those go to `public.cash_todo_actions` (admins only) with who and when, and show under History, where Undo puts one back. A to-do's key comes from the items behind it, so a new late invoice or bill makes a new to-do.
