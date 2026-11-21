@@ -79,3 +79,10 @@ The response sheet and the existing #form-submissions messages keep working as t
 - **Copy buttons:** every contact field has its own **Copy** button, and **Copy for QuickBooks** copies the customer name, contact, email, phone and address in one go.
 - **Export to Excel** downloads the leads you're looking at (after filters) as a branded spreadsheet.
 - **History:** every stage change is noted automatically under **Notes and history**, with who changed it and when.
+
+## Admin dashboard
+
+- `dashboard.html` is the admins' home page (Krista and Kasey). Opening the Reports app as an admin goes here first, once per visit; everyone else goes straight to Reports.
+- Sections: Needs attention (new leads to call, gone quiet 7+ days, won but not in QB, hours to approve, ready for QuickBooks, reports not sent), This week (Monday to Sunday: new leads, won, hours, billable dollars, reports sent), Leads pipeline with open leads by person, and Recent activity.
+- Billable dollars are estimates at list rates: hours × the service rate (or the site minimum if higher) plus materials, before QuickBooks.
+- `dashboard.html?demo` shows made-up data to click around.

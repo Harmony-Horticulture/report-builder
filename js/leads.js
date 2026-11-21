@@ -284,12 +284,14 @@
     $("#whoRole").textContent = { admin: "Admin", technician: "Technician" }[state.me.role] || "Consultant";
     $("#demoBanner").classList.toggle("hidden", S.mode !== "demo");
     const tt = esc(cfg.TIME_TRACKER_URL || "https://harmony-horticulture.github.io/time-tracker/");
-    $("#sideNav").innerHTML = `<button type="button" class="active" data-home>Leads</button>
+    const q = S.mode === "demo" ? "?demo" : "";
+    $("#sideNav").innerHTML = `<a class="nav-link" href="dashboard.html${q}">Dashboard</a>
+      <button type="button" class="active" data-home>Leads</button>
       <button type="button" data-add>+ Add a lead</button>
       <div class="nav-label">Apps</div>
       <a class="nav-link" href="index.html">Reports</a>
       <a class="nav-link" href="${tt}">Time tracker ↗</a>`;
-    $("#bottomNav").innerHTML = `<button type="button" class="active" data-home>Leads</button><button type="button" data-add>+ Add</button><a class="nav-link" href="index.html">Reports</a><a class="nav-link" href="${tt}">Time</a>`;
+    $("#bottomNav").innerHTML = `<a class="nav-link" href="dashboard.html${q}">Home</a><button type="button" class="active" data-home>Leads</button><button type="button" data-add>+ Add</button><a class="nav-link" href="index.html">Reports</a><a class="nav-link" href="${tt}">Time</a>`;
     $$("[data-home]").forEach((b) => (b.onclick = () => { location.hash = ""; }));
     $$("[data-add]").forEach((b) => (b.onclick = () => openAdd()));
     const out = async () => { await S.signOut(); location.reload(); };
@@ -313,6 +315,8 @@
   }
 
   async function route() {
+    // dashboard.html links here with #add to open the Add a lead form
+    if (location.hash === "#add") { history.replaceState(null, "", location.pathname + location.search); await renderList().catch(fail); openAdd(); return; }
     const m = location.hash.match(/lead=([\w-]+)/);
     window.scrollTo(0, 0);
     try {
