@@ -1,0 +1,99 @@
+/* Harmony Horticulture Dashboard: the admins' home page */
+.dash-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+.dash-head h1 { margin: 0; }
+.dash-quick { display: flex; gap: 8px; flex-wrap: wrap; }
+.dash-quick a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+.dash-h { margin: 26px 0 12px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.dash-h .muted { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.dash-h3 { margin: 22px 0 10px; }
+
+/* Needs attention */
+.att-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+button.att {
+  display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px;
+  background: var(--white); color: var(--text); border-radius: var(--radius); padding: 16px 18px;
+  border-left: 6px solid var(--brown); box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-weight: 500;
+}
+button.att:hover { filter: none; box-shadow: 0 3px 10px rgba(0,0,0,0.09); }
+button.att.pink { border-left-color: var(--pink); }
+button.att.green { border-left-color: var(--green); }
+button.att.brown { border-left-color: var(--brown); }
+.att-n { font-size: 2rem; font-weight: 700; line-height: 1.1; color: var(--brown); }
+.att.pink .att-n { color: #C2387A; }
+.att.green .att-n { color: var(--green); }
+.att-label { font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.82rem; }
+.att-sub { font-size: 0.8rem; color: var(--gray); }
+button.att.clear { border-left-color: var(--leaf); }
+button.att.clear .att-n { color: #9A9A9A; }
+
+/* This week */
+.week-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.card.wk { margin: 0; padding: 16px 18px; }
+.wk-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--pink); }
+.wk-num { font-size: 2rem; font-weight: 700; color: var(--brown); line-height: 1.15; margin: 2px 0 6px; }
+.wk-num small { font-size: 0.9rem; font-weight: 600; color: var(--gray); }
+.wk.money .wk-num { color: var(--green); }
+.wk-sub { font-size: 0.82rem; color: var(--gray); margin: 0; }
+.wk-note { font-size: 0.72rem; color: var(--gray); font-style: italic; margin: 6px 0 0; }
+.bars { display: grid; gap: 5px; }
+.bar-row { display: grid; grid-template-columns: 68px 1fr auto; align-items: center; gap: 6px; font-size: 0.76rem; }
+.bar-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--gray); }
+.bar-row i { display: block; height: 8px; border-radius: 4px; background: var(--leaf); width: var(--w); min-width: 4px; }
+.bar-row b { font-weight: 700; }
+
+/* Pipeline and activity */
+.dash-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 26px; }
+.dash-two .card { margin: 0; }
+.pipe { display: grid; gap: 6px; }
+a.pipe-row { display: grid; grid-template-columns: 170px 1fr 32px; align-items: center; gap: 10px; text-decoration: none; color: var(--text); padding: 4px 6px; border-radius: 6px; font-size: 0.86rem; }
+a.pipe-row:hover { background: var(--panel); }
+a.pipe-row b { text-align: right; }
+.pipe-bar { display: block; height: 14px; background: var(--panel); border-radius: 7px; overflow: hidden; }
+.pipe-bar i.stage { display: block; height: 100%; width: var(--w); min-width: 4px; padding: 0; border-radius: 7px; }
+.pipe-bar i.stage.new { background: var(--pink); }
+.pipe-bar i.stage.contacted, .pipe-bar i.stage.intake_sent { background: #E7B54A; }
+.pipe-bar i.stage.intake_received, .pipe-bar i.stage.scheduled { background: var(--leaf); }
+.pipe-bar i.stage.proposal_sent { background: var(--brown); }
+.pipe-foot { margin: 10px 0 0; }
+.who-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.who-chip { background: #FDE7F1; color: #A3125A; border-radius: 20px; padding: 5px 12px; font-size: 0.82rem; font-weight: 600; }
+.who-chip b { margin-left: 4px; }
+.who-chip.none { background: var(--panel); color: var(--gray); }
+
+.feed { list-style: none; margin: 0; padding: 0; max-height: 520px; overflow-y: auto; }
+.feed li { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: start; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 0.86rem; }
+.feed li:last-child { border-bottom: none; }
+.feed a { color: var(--text); text-decoration: none; }
+.feed a:hover { color: var(--green); text-decoration: underline; }
+.feed-ic { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; background: var(--panel); color: var(--brown); }
+.feed-lead .feed-ic { background: #FDE7F1; color: #C2387A; }
+.feed-form .feed-ic { background: #EAF5DD; color: #3F6B12; }
+.feed-report .feed-ic { background: #F3ECE7; color: var(--brown); }
+.feed-time .feed-ic { background: #E3F4EA; color: var(--green); }
+.feed-at { color: var(--gray); font-size: 0.75rem; white-space: nowrap; }
+
+/* The list behind each attention card */
+.att-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.att-list li a { display: flex; flex-direction: column; padding: 10px 12px; border-radius: 8px; text-decoration: none; color: var(--text); border-bottom: 1px solid var(--line); }
+.att-list li a:hover { background: var(--panel); }
+.att-list li a span { font-size: 0.8rem; color: var(--gray); }
+
+@media (max-width: 1100px) {
+  .week-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  .dash-two { grid-template-columns: 1fr; }
+  .att-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .week-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  a.pipe-row { grid-template-columns: 130px 1fr 28px; font-size: 0.8rem; }
+}
+@media (max-width: 480px) {
+  .dash-quick { width: 100%; }
+  .dash-quick a.btn { flex: 1 1 45%; justify-content: center; padding: 9px 10px; font-size: 0.82rem; }
+  button.att { padding: 12px 14px; }
+  .att-n, .wk-num { font-size: 1.6rem; }
+}
+
+/* Which page you're on */
+.sidebar nav a.nav-link.active { background: rgba(255,255,255,0.14); font-weight: 700; }
+.bottomnav a.nav-link.active { color: var(--green); box-shadow: inset 0 3px 0 var(--green); }
