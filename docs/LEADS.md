@@ -94,3 +94,12 @@ The response sheet and the existing #form-submissions messages keep working as t
 - A morning task downloads the Excel attachments, runs `python3 -I tools/qb_reports.py <files>` to get the SQL, loads it, and archives the emails.
 - The to-do list is worked out in the page from those numbers plus approved hours not yet exported from the Time Tracker.
 - Each cash to-do has Done and Dismiss. Those go to `public.cash_todo_actions` (admins only) with who and when, and show under History, where Undo puts one back. A to-do's key comes from the items behind it, so a new late invoice or bill makes a new to-do.
+
+### Cash forecast (dashboard.html#forecast)
+
+Its own page in the left menu. 13 weeks, bank at the end of each week:
+- Starts with Total Bank Accounts plus Undeposited Funds (Balance Sheet).
+- Money in each week: average monthly Total Income over the last 6 full months, spread per week.
+- Money out, weeks 1 to 4: real A/P bills on their due dates (late ones in week 1), credit card balances in week 2, plus usual spending that isn't vendor bills (average out minus consultants, pest treatment and plant material).
+- Money out, weeks 5 to 13: average monthly total out (COGS plus Expenses), per week.
+- "Tight" means below one average month of spending. The dashboard shows a one-line summary, and a to-do appears when the low point is tight.

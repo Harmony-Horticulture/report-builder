@@ -231,7 +231,8 @@
       const L = pl.lines || {};
       const get = (k, i) => Number((L[k] || [])[i] || 0);
       hist = pl.months.map((m, i) => ({ m, inc: get("Total Income", i), out: get("Total Cost of Goods Sold (all)", i) + get("Total Expenses", i), net: get("Net Income", i),
-        fees: get("QuickBooks Payments Fees", i), cons: get("Total for Billable Consultants Fees", i) })).filter((x) => x.m !== "Total");
+        fees: get("QuickBooks Payments Fees", i), cons: get("Total for Billable Consultants Fees", i),
+        pest: get("Vendor Pest Treatment-Expense", i), plant: get("Plant Material", i), payroll: get("Total for Payroll Expense", i) })).filter((x) => x.m !== "Total");
     }
     const full = hist.filter((x) => !/\d-\d/.test(x.m));        // whole months only
     const last12 = full.slice(-12);
@@ -286,6 +287,37 @@
       text: `${money(bs.undeposited)} is sitting in Undeposited Funds: payments received but not recorded as deposited. Take any checks to the bank, then record the deposit in QuickBooks.` });
     if (bs && bs.total_cards > 1000) tips.push({ k: "cards", tone: "brown", amount: bs.total_cards, title: "Credit cards to pay down",
       text: `${money(bs.total_cards)} is on company credit cards (${Object.entries(bs.cards || {}).filter(([, v]) => v > 0).map(([n, v]) => `${n.replace(/\s*-?\s*CC.*$/i, "").replace(/\s*\(\d+\)/, "")} ${money(v)}`).join(", ")}). Pay these in full before interest is charged.` });
+    // 13-week cash forecast. Starts from the bank (plus money waiting to be
+    // deposited). Money in: the usual week, from the last 6 full months. Money
+    // out: the first 4 weeks use the real bills in QuickBooks (late ones in
+    // week 1) plus the usual non-bill spending; after that, the usual week.
+    const fc = (() => {
+      if (!bs || full.length < 3) return null;
+      const base = full.slice(-6), n = base.length, WPM = 52 / 12;
+      const mIn = avg(base, "inc"), mOut = avg(base, "out");
+      const mBilled = base.reduce((t, x) => t + x.cons + x.pest + x.plant, 0) / n;
+      const mOther = Math.max(0, mOut - mBilled);
+      const inW = mIn / WPM, outW = mOut / WPM, otherW = mOther / WPM, billedW = mBilled / WPM;
+      const start = dayTs(bs.as_of), KNOWN = 4;
+      const weeks = Array.from({ length: 13 }, (_, i) => ({ i, from: start + i * 7 * DAY, inc: inW, bills: 0, other: i < KNOWN ? otherW : outW, cards: 0, billList: [] }));
+      const counted = [];
+      bills.forEach((x) => {
+        const w = Math.max(0, Math.floor((dayTs(x.due) - start) / (7 * DAY)));
+        if (w < KNOWN) { weeks[w].bills += x.open; weeks[w].billList.push(x); counted.push(x); }
+      });
+      if (bs.total_cards > 0) weeks[1].cards = bs.total_cards;
+      const startBal = bs.total_bank + (bs.undeposited || 0);
+      let bal = startBal;
+      weeks.forEach((w) => { w.out = w.bills + w.other + w.cards; bal += w.inc - w.out; w.end = bal; });
+      const low = weeks.reduce((a, b) => (b.end < a.end ? b : a));
+      return { weeks, low, end: bal, startBal, cushion: mOut, mIn, mOut, mBilled, mOther, inW, outW, otherW, billedW, counted, known: KNOWN,
+        base: `${base[0].m} to ${base[n - 1].m}`, n, asOf: bs.as_of, lateIn: sum(lateInv), payrollRecent: base.slice(-2).map((x) => x.payroll), payrollBefore: avg(base.slice(0, -2), "payroll") };
+    })();
+    const wkLabel = (ts) => new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    if (fc && fc.low.end < fc.cushion) tips.unshift({ k: "forecast", tone: "pink", amount: fc.low.end,
+      title: fc.low.end < 0 ? `Cash could run out the week of ${wkLabel(fc.low.from)}` : `Cash gets tight the week of ${wkLabel(fc.low.from)}`,
+      text: `The forecast drops to ${fc.low.end < 0 ? "−" : ""}${money(Math.abs(fc.low.end))}, less than a normal month of spending (${money(fc.cushion)}). Collect late invoices now and hold anything that can wait. See Cash forecast.` });
+
     // 10. Lumpy months: keep a cushion
     const neg = last12.filter((x) => x.net < 0);
     if (neg.length >= 3) tips.push({ k: "cushion", tone: "brown", amount: -avg(neg, "net"), title: "Keep a cushion",
@@ -359,6 +391,30 @@
         ],
         link: QBO + "homepage", linkLabel: "Open QuickBooks ↗",
       } : null,
+      forecast: fc ? {
+        title: "Cash forecast", total: fc.end, source: `QuickBooks Balance Sheet, A/P Aging Detail and Profit and Loss (cash basis), as of ${niceDate(fc.asOf)}`,
+        how: [
+          `Starts with what's in the bank (${money(bs.total_bank)}) plus Undeposited Funds (${money(bs.undeposited || 0)}): ${money(fc.startBal)}.`,
+          `Money in each week is your usual week: ${money(fc.inW)}. That's the average monthly income from ${fc.base} (${money(fc.mIn)} a month) spread over the weeks. It assumes clients keep paying at their usual pace, late payers included. The ${money(fc.lateIn)} of late invoices is part of what's expected, not extra.`,
+          `Money out in the first ${fc.known} weeks is the real bills in QuickBooks on their due dates (anything already late counts in week 1), plus your usual spending that doesn't come through bills, like payroll, rent and card purchases: ${money(fc.otherW)} a week. After that, it's your usual week: ${money(fc.outW)}.`,
+          bs.total_cards ? `The credit card balances (${money(bs.total_cards)}) are counted as paid in full in week 2.` : "",
+          `"Getting tight" means the balance drops below one normal month of spending (${money(fc.cushion)}).`,
+          fc.payrollRecent.every((v) => v < fc.payrollBefore / 4) && fc.payrollBefore > 1000 ? `Heads up: payroll in the Profit and Loss dropped from about ${money(fc.payrollBefore)} a month to ${fc.payrollRecent.map(money).join(" and ")} in the last two months. If payroll is now paid from somewhere QuickBooks doesn't show, the forecast is too high by about that much.` : "",
+          "This is a guide, not a promise. It's redone every weekday morning when the new QuickBooks numbers arrive.",
+        ],
+        sections: [
+          { h: "Week by week (bank at the end of the week)", rows: fc.weeks.map((w) => [`Week of ${wkLabel(w.from)}`, w.end, `in ${money(w.inc)} · out ${money(w.out)}${w.bills ? ` (bills ${money(w.bills)})` : ""}${w.cards ? ` (credit cards ${money(w.cards)})` : ""}`]) },
+          { h: `Bills counted in the first ${fc.known} weeks`, rows: fc.counted.slice().sort(byDue).map(rowInv) },
+          { h: `Your usual month (average of ${fc.base})`, rows: [
+            ["Came in", fc.mIn, "Total Income"],
+            ["Went out", fc.mOut, "Cost of Goods Sold plus Expenses"],
+            ["  Of that, through vendor bills", fc.mBilled, "Consultants, pest treatment and plant material"],
+            ["  Of that, everything else", fc.mOther, "Payroll, rent, card purchases and the rest"],
+          ] },
+          { h: "Starting point", rows: [...Object.entries(bs.bank || {}).map(([nm, v]) => [nm, v, "Bank account"]), ["Undeposited Funds", bs.undeposited || 0, "Received, not deposited yet"]] },
+        ],
+        link: QBO + "reportv2?token=PANDL", linkLabel: "Open the Profit and Loss in QuickBooks ↗",
+      } : null,
       chart: pl ? {
         title: "Money in and out by month", source: `QuickBooks Profit and Loss, ${pl.basis === "cash" ? "cash basis" : "accrual basis"}, by month, as of ${niceDate(pl.as_of)}`,
         how: [
@@ -373,6 +429,7 @@
 
     return {
       explain,
+      fc,
       asOf,
       owed: sum(invoices), owedLate: sum(lateInv), credits: -sum(credits),
       owe: sum(bills), oweLate: sum(lateBills), billCredits: -sum(billCredits),
@@ -496,7 +553,7 @@
     const asg = Object.entries(c.assigned).sort((a, b) => (a[0] === "Not assigned") - (b[0] === "Not assigned") || b[1] - a[1]);
     const ICON = { lead: "●", form: "✎", report: "▤", time: "◷" };
 
-    $("#view").innerHTML = `
+    $("#view").innerHTML = location.hash === "#forecast" ? forecastPage(cash) : `
       <div class="dash-head">
         <div><p class="eyebrow">${esc(new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }))}</p>
           <h1>${hello}${first ? ", " + esc(first) : ""}</h1></div>
@@ -569,6 +626,7 @@
       } catch (e) { b.disabled = false; toast("Couldn't save that: " + e.message); }
     }));
     $$("[data-history]").forEach((b) => (b.onclick = () => openHistory(cash.history)));
+    $$("[data-fcdl]").forEach((b) => (b.onclick = () => runDownload(b.dataset.fcdl, [cash.explain.forecast], "Harmony Horticulture Cash forecast", b)));
     $$("[data-explain]").forEach((b) => {
       const go = () => { const x = cash.explain[b.dataset.explain]; if (x) openExplain(x); };
       b.onclick = go;
@@ -583,6 +641,48 @@
   const tipLi = (t, i) => `<li class="tip ${t.tone}"><button type="button" class="tip-btn" data-tip="${i}" ${t.list && t.list.length ? "" : "disabled"}>
     <span class="tip-title">${esc(t.title)}</span><span class="tip-text">${esc(t.text)}</span></button>
     <span class="tip-acts"><button type="button" class="tip-act done" data-act="done" data-i="${i}" title="Mark done" aria-label="Mark done: ${esc(t.title)}">✓ Done</button><button type="button" class="tip-act" data-act="dismissed" data-i="${i}" title="Dismiss" aria-label="Dismiss: ${esc(t.title)}">Dismiss</button></span></li>`;
+  const fcWeek = (ts) => new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const kShort = (v) => `${v < 0 ? "−" : ""}$${Math.round(Math.abs(v) / 1000)}k`;
+  const signed = (v) => `${v < 0 ? "−" : ""}${money(Math.abs(v))}`;
+
+  function forecastPage(k) {
+    const head = `<div class="dash-head"><div><p class="eyebrow">Next 13 weeks</p><h1>Cash forecast</h1></div>
+      <div class="dash-quick"><a class="btn secondary" href="#">← Dashboard</a></div></div>`;
+    if (!k || !k.fc) return head + `<div class="card cash-empty"><p class="muted" style="margin:0">The forecast needs the Balance Sheet, the A/P Aging Detail and the monthly Profit and Loss from QuickBooks. It shows here once those emails have arrived.</p></div>`;
+    const f = k.fc, tight = f.low.end < f.cushion;
+    const max = Math.max(1, f.startBal, f.cushion, ...f.weeks.map((w) => w.end));
+    return head + `
+      <p class="small muted" style="margin:-6px 0 14px">From QuickBooks, as of ${esc(niceDate(f.asOf))}. Updated every weekday morning.</p>
+      <div class="cash-grid">
+        <div class="card wk"><div class="wk-label">Today</div><div class="wk-num">${money(f.startBal)}</div><p class="wk-sub">Bank plus money waiting to be deposited</p></div>
+        <div class="card wk"><div class="wk-label">Lowest point</div><div class="wk-num ${tight ? "neg" : ""}">${signed(f.low.end)}</div><p class="wk-sub">Week of ${esc(fcWeek(f.low.from))}${tight ? ` · <b class="neg">less than a month of spending</b>` : ""}</p></div>
+        <div class="card wk"><div class="wk-label">In 13 weeks</div><div class="wk-num ${f.end < 0 ? "neg" : ""}">${signed(f.end)}</div><p class="wk-sub">${f.end >= f.startBal ? "Up" : "Down"} ${money(Math.abs(f.end - f.startBal))} from today</p></div>
+        <div class="card wk"><div class="wk-label">Usual week</div><div class="wk-num brown">${signed(f.inW - f.outW)}</div><p class="wk-sub">${money(f.inW)} in · ${money(f.outW)} out</p><p class="wk-note">Average of ${esc(f.base)}</p></div>
+      </div>
+      <div class="card">
+        <div class="tips-head"><h3 class="dash-h3" style="margin:0">Bank at the end of each week</h3>
+          <button type="button" class="link-btn" data-explain="forecast">How this is worked out</button></div>
+        <div class="fchart" role="img" aria-label="Forecast bank balance by week">
+          <i class="fc-line" style="--y:${f.cushion / max}"><span>One month of spending ${esc(kShort(f.cushion))}</span></i>
+          ${f.weeks.map((w) => `<div class="mcol" title="Week of ${esc(fcWeek(w.from))}: ${esc(signed(w.end))}">
+            <div class="mbars"><i class="${w.end < f.cushion ? "low" : "ok"}" style="--h:${(Math.max(0, w.end) / max) * 100}%"></i></div>
+            <span class="mnet ${w.end < f.cushion ? "neg" : ""}">${esc(kShort(w.end))}</span><span class="mlabel">${esc(fcWeek(w.from))}</span></div>`).join("")}
+        </div>
+        <p class="small muted mlegend">The first ${f.known} weeks use the real bills in QuickBooks. After that it's your usual week. Bars turn pink below one month of spending.</p>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h3 class="dash-h3" style="margin-top:0">Week by week</h3>
+        <div class="fc-scroll"><table class="fc-table"><thead><tr><th>Week of</th><th class="num">Coming in</th><th class="num">Bills</th><th class="num">Other spending</th><th class="num">Bank at end</th></tr></thead>
+          <tbody>${f.weeks.map((w) => `<tr class="${w === f.low ? "is-low" : ""}"><td>${esc(fcWeek(w.from))}${w.i < f.known ? "" : ` <span class="muted small">usual</span>`}</td>
+            <td class="num">${money(w.inc)}</td><td class="num">${w.i < f.known ? money(w.bills + w.cards) : "–"}${w.cards ? `<span class="muted small"> incl. cards</span>` : ""}</td>
+            <td class="num">${money(w.other)}</td><td class="num ${w.end < f.cushion ? "neg" : ""}"><b>${esc(signed(w.end))}</b></td></tr>`).join("")}</tbody></table></div>
+        <div class="btn-row" style="justify-content:flex-end;margin-top:14px">
+          <button type="button" class="secondary" data-fcdl="xlsx">Download Excel</button>
+          <button type="button" class="secondary" data-fcdl="pdf">Download PDF</button>
+        </div>
+      </div>`;
+  }
+
   function cashSection(k) {
     if (!k) return `<h2 class="dash-h">Cash flow</h2>
       <div class="card cash-empty"><p class="muted" style="margin:0">QuickBooks numbers show here once the morning report emails start arriving.</p></div>`;
@@ -602,6 +702,9 @@
         <div class="card wk cash-tile" data-explain="bank" role="button" tabindex="0" aria-label="How this is worked out"><div class="wk-label">In the bank</div><div class="wk-num">${k.bank != null ? money(k.bank) : "–"}</div>
           <p class="wk-sub">${k.bank != null ? `${k.undeposited ? `${money(k.undeposited)} waiting to be deposited · ` : ""}${k.cards ? `${money(k.cards)} on credit cards` : `As of ${esc(niceDate(k.bankAsOf))}`}` : "Shows once the Balance Sheet email arrives"}</p><span class="tile-how">How this is worked out ›</span></div>
       </div>
+      ${k.fc ? `<a class="fc-strip ${k.fc.low.end < k.fc.cushion ? "tight" : ""}" href="#forecast">
+        <span><b>Next 13 weeks:</b> lowest point ${k.fc.low.end < 0 ? "−" : ""}${money(Math.abs(k.fc.low.end))} the week of ${esc(fcWeek(k.fc.low.from))}${k.fc.low.end < k.fc.cushion ? ", less than a month of spending" : ""}.</span>
+        <span class="fc-go">Cash forecast ›</span></a>` : ""}
       <div class="dash-two cash-two">
         <div class="card">
           <div class="tips-head"><h3 class="dash-h3" style="margin:0">Today's cash to-dos</h3>
@@ -853,14 +956,21 @@
     $("#whoRole").textContent = "Admin";
     $("#demoBanner").classList.toggle("hidden", !DEMO);
     const q = DEMO ? "?demo" : "";
-    $("#sideNav").innerHTML = `<a class="nav-link active" href="dashboard.html${q}">Dashboard</a>
+    $("#sideNav").innerHTML = `<a class="nav-link" data-page="" href="dashboard.html${q}#">Dashboard</a>
+      <a class="nav-link nav-sub" data-page="forecast" href="dashboard.html${q}#forecast">Cash forecast</a>
       <a class="nav-link" href="leads.html${q}">Leads</a>
       <a class="nav-link" href="index.html${q}">Reports</a>
       <a class="nav-link" href="${esc(TT)}">Time tracker ↗</a>`;
-    $("#bottomNav").innerHTML = `<a class="nav-link active" href="dashboard.html${q}">Home</a><a class="nav-link" href="leads.html${q}">Leads</a><a class="nav-link" href="index.html${q}">Reports</a><a class="nav-link" href="${esc(TT)}">Time</a>`;
+    $("#bottomNav").innerHTML = `<a class="nav-link" data-page="" href="dashboard.html${q}#">Home</a><a class="nav-link" data-page="forecast" href="dashboard.html${q}#forecast">Forecast</a><a class="nav-link" href="leads.html${q}">Leads</a><a class="nav-link" href="index.html${q}">Reports</a><a class="nav-link" href="${esc(TT)}">Time</a>`;
+    markNav();
     const out = async () => { await S.signOut(); location.reload(); };
     $("#signOutBtn").onclick = out;
     $("#signOutBtnMobile").onclick = out;
+  }
+
+  function markNav() {
+    const page = location.hash.replace("#", "");
+    $$("[data-page]").forEach((a) => a.classList.toggle("active", a.dataset.page === page));
   }
 
   async function start() {
@@ -875,6 +985,7 @@
       const draw = async () => render(await S.load(), me);
       redraw = draw;
       await draw();
+      window.addEventListener("hashchange", () => { markNav(); window.scrollTo(0, 0); draw().catch(console.error); });
       // Keep it current while it's open
       if (!DEMO) setInterval(() => { if (document.visibilityState === "visible" && !$("#modalRoot").innerHTML) draw().catch(console.error); }, 5 * 60 * 1000);
     } catch (e) {
