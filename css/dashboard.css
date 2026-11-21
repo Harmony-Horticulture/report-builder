@@ -189,3 +189,9 @@ button.tip-act:hover { filter: none; background: #F7F7F7; }
 @media (max-width: 480px) { .fchart { height: 190px; gap: 2px; } .fc-line span { font-size: 0.58rem; } .fchart .mnet { visibility: hidden; } .fchart .mcol:nth-of-type(even) .mlabel { visibility: hidden; } .fchart .mlabel { overflow: visible; } }
 .sidebar nav a.nav-link.nav-sub { margin: -2px 0 6px 14px; padding: 7px 12px 7px 14px; font-size: 0.88rem; font-weight: 400; border-left: 2px solid rgba(255,255,255,0.25); border-radius: 0 8px 8px 0; opacity: 0.9; }
 .sidebar nav a.nav-link.nav-sub.active { border-left-color: #8AC641; opacity: 1; }
+.est-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.est-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.est-list li { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid #EEE; font-size: 0.88rem; }
+.est-list li small { display: block; color: var(--gray); font-size: 0.74rem; }
+.est-list li b { white-space: nowrap; }
+@media (max-width: 700px) { .est-grid { grid-template-columns: 1fr; } }

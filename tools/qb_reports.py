@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Turn QuickBooks Online report exports (.xlsx) into rows for public.finance_snapshots.
 
-Reads: A/R Aging Detail, A/P Aging Detail, Balance Sheet, and Profit and Loss
-(cash basis, columns by month). Prints SQL that upserts one snapshot per report.
+Reads: A/R Aging Detail, A/P Aging Detail, Balance Sheet, Profit and Loss
+(cash basis, columns by month), and Estimates by Customer. Prints SQL that upserts one snapshot per report.
 
   python3 -I tools/qb_reports.py file1.xlsx file2.xlsx ... > load.sql
 """
@@ -79,6 +79,24 @@ def balance_sheet(rows):
             "total_cards": lines.get("Total Credit Cards", round(sum(cards.values()), 2)),
             "undeposited": lines.get("Undeposited Funds", 0)}
 
+def estimates(rows):
+    hdr = next(i for i, r in enumerate(rows) if "Estimate status" in [str(c).strip() if c else "" for c in r])
+    cols = {str(c).strip(): j for j, c in enumerate(rows[hdr]) if c}
+    items, who = [], None
+    for r in rows[hdr + 1:]:
+        if r[0] and not r[cols["Date"]]:
+            t = str(r[0]).strip()
+            if not t.startswith("Total") and t != "TOTAL": who = t
+            continue
+        if not r[cols["Date"]]: continue
+        g = lambda k: r[cols[k]] if k in cols else None
+        items.append({
+            "customer": who or "", "date": mdy(g("Date")), "num": str(g("Num") or ""), "status": str(g("Estimate status") or "").strip(),
+            "accepted_on": mdy(g("Accepted on")), "expires": mdy(g("Expiration date")), "invoice": str(g("Invoice number") or ""),
+            "amount": num(g("Amount")),
+        })
+    return {"items": items, "total": round(sum(i["amount"] or 0 for i in items), 2)}
+
 def parse(path):
     ws = openpyxl.load_workbook(path, data_only=True).active
     rows = [list(r) + [None] * 10 for r in ws.iter_rows(values_only=True)]
@@ -86,6 +104,7 @@ def parse(path):
     if title.startswith("A/R Aging Detail"): return "ar_detail", as_of_from(rows), aging(rows, "Customer full name")
     if title.startswith("A/P Aging Detail"): return "ap_detail", as_of_from(rows), aging(rows, "Vendor display name")
     if title.startswith("Balance Sheet"): return "balance_sheet", as_of_from(rows), balance_sheet(rows)
+    if title.startswith("Estimates by Customer"): return "estimates", as_of_from(rows), estimates(rows)
     if title.startswith("Profit and Loss"):
         d = pnl_monthly(rows)
         if len(d["months"]) < 3: raise SystemExit(f"{path}: the Profit and Loss needs columns by month")
