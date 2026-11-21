@@ -102,4 +102,5 @@ Its own page in the left menu. 13 weeks, bank at the end of each week:
 - Money in each week: average monthly Total Income over the last 6 full months, spread per week.
 - Money out, weeks 1 to 4: real A/P bills on their due dates (late ones in week 1), credit card balances in week 2, plus usual spending that isn't vendor bills (average out minus consultants, pest treatment and plant material).
 - Money out, weeks 5 to 13: average monthly total out (COGS plus Expenses), per week.
+- Estimates by Customer (weekly, Mondays) show as "Upcoming work" on the page: accepted but not invoiced, and pending. They are not added to money in, since the usual week already includes new work. Accepted, not-invoiced estimates also make a to-do.
 - "Tight" means below one average month of spending. The dashboard shows a one-line summary, and a to-do appears when the low point is tight.

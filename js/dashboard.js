@@ -287,6 +287,17 @@
       text: `${money(bs.undeposited)} is sitting in Undeposited Funds: payments received but not recorded as deposited. Take any checks to the bank, then record the deposit in QuickBooks.` });
     if (bs && bs.total_cards > 1000) tips.push({ k: "cards", tone: "brown", amount: bs.total_cards, title: "Credit cards to pay down",
       text: `${money(bs.total_cards)} is on company credit cards (${Object.entries(bs.cards || {}).filter(([, v]) => v > 0).map(([n, v]) => `${n.replace(/\s*-?\s*CC.*$/i, "").replace(/\s*\(\d+\)/, "")} ${money(v)}`).join(", ")}). Pay these in full before interest is charged.` });
+    // Estimates: upcoming work. Accepted ones become invoices when the job is
+    // scheduled or done; pending ones are waiting on the client.
+    const estItems = (f.estimates && f.estimates.items) || [];
+    const estAccepted = estItems.filter((x) => /accepted/i.test(x.status) && !x.invoice).sort((a, b) => b.amount - a.amount);
+    const estPending = estItems.filter((x) => /pending/i.test(x.status)).sort((a, b) => b.amount - a.amount);
+    const estSum = (l) => l.reduce((t, x) => t + Number(x.amount || 0), 0);
+    const estRow = (x) => [`${x.customer}: ${money(x.amount)}`, `Estimate ${x.num} · ${x.accepted_on ? `accepted ${niceDate(x.accepted_on)}` : `sent ${niceDate(x.date)}`}`, QBO + "estimates"];
+    if (estAccepted.length) tips.push({ k: "est", tone: "green", amount: estSum(estAccepted), title: "Turn accepted work into invoices",
+      text: `${money(estSum(estAccepted))} of accepted estimates isn't invoiced yet (${estAccepted.slice(0, 2).map((x) => x.customer).join(", ")}${estAccepted.length > 2 ? "…" : ""}). As each job is scheduled or done, convert it so the money can come in.`,
+      list: estAccepted, row: estRow, all: QBO + "estimates", allLabel: "Open estimates ↗" });
+
     // 13-week cash forecast. Starts from the bank (plus money waiting to be
     // deposited). Money in: the usual week, from the last 6 full months. Money
     // out: the first 4 weeks use the real bills in QuickBooks (late ones in
@@ -310,7 +321,7 @@
       let bal = startBal;
       weeks.forEach((w) => { w.out = w.bills + w.other + w.cards; bal += w.inc - w.out; w.end = bal; });
       const low = weeks.reduce((a, b) => (b.end < a.end ? b : a));
-      return { weeks, low, end: bal, startBal, cushion: mOut, mIn, mOut, mBilled, mOther, inW, outW, otherW, billedW, counted, known: KNOWN,
+      return { estAccepted, estPending, estAcc: estSum(estAccepted), estPend: estSum(estPending), estAsOf: f.estimates && f.estimates.as_of, weeks, low, end: bal, startBal, cushion: mOut, mIn, mOut, mBilled, mOther, inW, outW, otherW, billedW, counted, known: KNOWN,
         base: `${base[0].m} to ${base[n - 1].m}`, n, asOf: bs.as_of, lateIn: sum(lateInv), payrollRecent: base.slice(-2).map((x) => x.payroll), payrollBefore: avg(base.slice(0, -2), "payroll") };
     })();
     const wkLabel = (ts) => new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -400,6 +411,7 @@
           bs.total_cards ? `The credit card balances (${money(bs.total_cards)}) are counted as paid in full in week 2.` : "",
           `"Getting tight" means the balance drops below one normal month of spending (${money(fc.cushion)}).`,
           fc.payrollRecent.every((v) => v < fc.payrollBefore / 4) && fc.payrollBefore > 1000 ? `Heads up: payroll in the Profit and Loss dropped from about ${money(fc.payrollBefore)} a month to ${fc.payrollRecent.map(money).join(" and ")} in the last two months. If payroll is now paid from somewhere QuickBooks doesn't show, the forecast is too high by about that much.` : "",
+          fc.estAccepted.length || fc.estPending.length ? `Estimates are shown on the page but not added to money in, because your usual week already includes new work like this. Accepted, not invoiced: ${money(fc.estAcc)}. Waiting on the client: ${money(fc.estPend)}.` : "",
           "This is a guide, not a promise. It's redone every weekday morning when the new QuickBooks numbers arrive.",
         ],
         sections: [
@@ -411,6 +423,8 @@
             ["  Of that, through vendor bills", fc.mBilled, "Consultants, pest treatment and plant material"],
             ["  Of that, everything else", fc.mOther, "Payroll, rent, card purchases and the rest"],
           ] },
+          fc.estAccepted.length ? { h: "Accepted estimates, not invoiced yet (not added in)", rows: fc.estAccepted.map((x) => [x.customer, x.amount, `Estimate ${x.num} · accepted ${niceDate(x.accepted_on)}`]) } : null,
+          fc.estPending.length ? { h: "Estimates waiting on the client (not added in)", rows: fc.estPending.map((x) => [x.customer, x.amount, `Estimate ${x.num} · sent ${niceDate(x.date)}`]) } : null,
           { h: "Starting point", rows: [...Object.entries(bs.bank || {}).map(([nm, v]) => [nm, v, "Bank account"]), ["Undeposited Funds", bs.undeposited || 0, "Received, not deposited yet"]] },
         ],
         link: QBO + "reportv2?token=PANDL", linkLabel: "Open the Profit and Loss in QuickBooks ↗",
@@ -654,12 +668,12 @@
     return head + `
       <p class="small muted" style="margin:-6px 0 14px">From QuickBooks, as of ${esc(niceDate(f.asOf))}. Updated every weekday morning.</p>
       <div class="cash-grid">
-        <div class="card wk"><div class="wk-label">Today</div><div class="wk-num">${money(f.startBal)}</div><p class="wk-sub">Bank plus money waiting to be deposited</p></div>
-        <div class="card wk"><div class="wk-label">Lowest point</div><div class="wk-num ${tight ? "neg" : ""}">${signed(f.low.end)}</div><p class="wk-sub">Week of ${esc(fcWeek(f.low.from))}${tight ? ` · <b class="neg">less than a month of spending</b>` : ""}</p></div>
-        <div class="card wk"><div class="wk-label">In 13 weeks</div><div class="wk-num ${f.end < 0 ? "neg" : ""}">${signed(f.end)}</div><p class="wk-sub">${f.end >= f.startBal ? "Up" : "Down"} ${money(Math.abs(f.end - f.startBal))} from today</p></div>
-        <div class="card wk"><div class="wk-label">Usual week</div><div class="wk-num brown">${signed(f.inW - f.outW)}</div><p class="wk-sub">${money(f.inW)} in · ${money(f.outW)} out</p><p class="wk-note">Average of ${esc(f.base)}</p></div>
+        <div class="card wk cash-tile" data-explain="forecast" role="button" tabindex="0" aria-label="How this is worked out"><div class="wk-label">Today</div><div class="wk-num">${money(f.startBal)}</div><p class="wk-sub">Bank plus money waiting to be deposited</p><span class="tile-how">How this is worked out ›</span></div>
+        <div class="card wk cash-tile" data-explain="forecast" role="button" tabindex="0" aria-label="How this is worked out"><div class="wk-label">Lowest point</div><div class="wk-num ${tight ? "neg" : ""}">${signed(f.low.end)}</div><p class="wk-sub">Week of ${esc(fcWeek(f.low.from))}${tight ? ` · <b class="neg">less than a month of spending</b>` : ""}</p><span class="tile-how">How this is worked out ›</span></div>
+        <div class="card wk cash-tile" data-explain="forecast" role="button" tabindex="0" aria-label="How this is worked out"><div class="wk-label">In 13 weeks</div><div class="wk-num ${f.end < 0 ? "neg" : ""}">${signed(f.end)}</div><p class="wk-sub">${f.end >= f.startBal ? "Up" : "Down"} ${money(Math.abs(f.end - f.startBal))} from today</p><span class="tile-how">How this is worked out ›</span></div>
+        <div class="card wk cash-tile" data-explain="forecast" role="button" tabindex="0" aria-label="How this is worked out"><div class="wk-label">Usual week</div><div class="wk-num brown">${signed(f.inW - f.outW)}</div><p class="wk-sub">${money(f.inW)} in · ${money(f.outW)} out</p><p class="wk-note">Average of ${esc(f.base)}</p><span class="tile-how">How this is worked out ›</span></div>
       </div>
-      <div class="card">
+      <div class="card" style="margin-top:16px">
         <div class="tips-head"><h3 class="dash-h3" style="margin:0">Bank at the end of each week</h3>
           <button type="button" class="link-btn" data-explain="forecast">How this is worked out</button></div>
         <div class="fchart" role="img" aria-label="Forecast bank balance by week">
@@ -670,6 +684,16 @@
         </div>
         <p class="small muted mlegend">The first ${f.known} weeks use the real bills in QuickBooks. After that it's your usual week. Bars turn pink below one month of spending.</p>
       </div>
+      ${f.estAccepted.length || f.estPending.length ? `<div class="card" style="margin-top:16px">
+        <div class="tips-head"><h3 class="dash-h3" style="margin:0">Upcoming work from estimates</h3><a class="link-btn" href="${QBO}estimates" target="_blank" rel="noopener">Open estimates ↗</a></div>
+        <p class="small muted" style="margin:0 0 12px">Not added to the forecast: your usual week already includes new work like this. Accepted work turns into money once it's invoiced.</p>
+        <div class="est-grid">
+          <div><div class="wk-label">Accepted, not invoiced</div><div class="wk-num">${money(f.estAcc)}</div>
+            <ul class="est-list">${f.estAccepted.map((x) => `<li><span>${esc(x.customer)}<small>Estimate ${esc(x.num)} · accepted ${esc(niceDate(x.accepted_on))}</small></span><b>${money(x.amount)}</b></li>`).join("") || `<li class="muted">None</li>`}</ul></div>
+          <div><div class="wk-label">Waiting on the client</div><div class="wk-num brown">${money(f.estPend)}</div>
+            <ul class="est-list">${f.estPending.map((x) => `<li><span>${esc(x.customer)}<small>Estimate ${esc(x.num)} · sent ${esc(niceDate(x.date))}</small></span><b>${money(x.amount)}</b></li>`).join("") || `<li class="muted">None</li>`}</ul></div>
+        </div>
+      </div>` : ""}
       <div class="card" style="margin-top:16px">
         <h3 class="dash-h3" style="margin-top:0">Week by week</h3>
         <div class="fc-scroll"><table class="fc-table"><thead><tr><th>Week of</th><th class="num">Coming in</th><th class="num">Bills</th><th class="num">Other spending</th><th class="num">Bank at end</th></tr></thead>
