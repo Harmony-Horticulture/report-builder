@@ -503,7 +503,7 @@
         <div class="dash-quick">
           <a class="btn" href="leads.html${Q}#add">+ Add a lead</a>
           <a class="btn secondary" href="index.html#/new">New report</a>
-          <a class="btn secondary" href="${esc(TT)}">Approve time ↗</a>
+          <a class="btn secondary" href="${esc(TT)}">Go to time ↗</a>
           <a class="btn secondary" href="${esc(TT)}">Export to QuickBooks ↗</a>
         </div>
       </div>
