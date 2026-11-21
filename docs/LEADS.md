@@ -86,3 +86,10 @@ The response sheet and the existing #form-submissions messages keep working as t
 - Sections: Needs attention (new leads to call, gone quiet 7+ days, won but not in QB, hours to approve, ready for QuickBooks, reports not sent), This week (Monday to Sunday: new leads, won, hours, billable dollars, reports sent), Leads pipeline with open leads by person, and Recent activity.
 - Billable dollars are estimates at list rates: hours × the service rate (or the site minimum if higher) plus materials, before QuickBooks.
 - `dashboard.html?demo` shows made-up data to click around.
+
+## Cash flow (QuickBooks)
+
+- The dashboard's Cash flow section reads `public.finance_snapshots` (admins only). One row per report per day: `ar_detail`, `ap_detail`, `balance_sheet`, `pnl_monthly`.
+- QuickBooks emails these reports to accounting@harmonyhorticulture.com with "HH Dashboard" in the subject: A/R Aging Detail, A/P Aging Detail and Balance Sheet every weekday at 6 AM, and Profit and Loss (cash basis, columns by month) on Mondays.
+- A morning task downloads the Excel attachments, runs `python3 -I tools/qb_reports.py <files>` to get the SQL, loads it, and archives the emails.
+- The to-do list is worked out in the page from those numbers plus approved hours not yet exported from the Time Tracker.

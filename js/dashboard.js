@@ -25,6 +25,8 @@
   const STAGE = Object.fromEntries(STAGES);
   const OPEN = ["new", "contacted", "intake_sent", "intake_received", "scheduled", "proposal_sent"];
   const CHANNEL = { phone: "Phone call", text: "Text", email: "Email", website: "Website form", intake_form: "Intake form", referral: "Referral", other: "Other" };
+  // Consultants paid by bill (their bills show up in A/P)
+  const CONSULTANT_VENDORS = /Robbie Stephens|Kristen Battafarano|Sample Consulting/i;
   const ASSIGNEE = { kasey: "Kasey", krista: "Krista", robert: "Robbie", stephanie: "Stephanie" };
 
   const money = (n) => "$" + Math.round(n || 0).toLocaleString("en-US");
@@ -79,7 +81,7 @@
       async signOut() { await sb.auth.signOut(); },
       async load() {
         const since = isoDate(new Date(Date.now() - 180 * DAY));
-        const [leads, notes, intakes, reports, sends, entries, services, clients, people] = await Promise.all([
+        const [leads, notes, intakes, reports, sends, entries, services, clients, people, snaps] = await Promise.all([
           soft(sb.from("leads").select("id, lead_date, created_at, updated_at, project_name, contact_name, company, email, phone, channel, stage, in_quickbooks, won_at, details")),
           soft(sb.from("lead_notes").select("lead_id, created_at, author_name, body, automatic").order("created_at", { ascending: false }).limit(60)),
           soft(sb.from("lead_intakes").select("lead_id, source, submitted_at").order("submitted_at", { ascending: false }).limit(30)),
@@ -89,8 +91,9 @@
           soft(sb.from("service_types").select("id, name, rate, billable")),
           soft(sb.from("clients").select("id, name")),
           soft(sb.from("profiles").select("id, full_name, email")),
+          soft(sb.from("finance_snapshots").select("kind, as_of, data").order("as_of", { ascending: false }).limit(40)),
         ]);
-        return { leads, notes, intakes, reports, sends, entries, services, clients, people };
+        return { leads, notes, intakes, reports, sends, entries, services, clients, people, finance: latestByKind(snaps) };
       },
     };
   }
@@ -143,7 +146,139 @@
       E("u1", "c4", 9, 3, "s1", "approved", { qb: true }), E("u3", "c5", 10, 5, "s3", "approved", { qb: true }), E("u2", "c6", 12, 2, "s2", "approved", { qb: true }),
     ];
     const me = { id: "u4", email: "demo@harmonyhorticulture.com", full_name: "Krista O'Malley", role: "admin", active: true };
-    return { async me() { return me; }, async signIn() {}, async signOut() {}, async load() { return { leads, notes, intakes, reports, sends, entries, services, clients, people }; } };
+    const finance = demoFinance(day);
+    return { async me() { return me; }, async signIn() {}, async signOut() {}, async load() { return { leads, notes, intakes, reports, sends, entries, services, clients, people, finance }; } };
+  }
+
+
+  // Newest QuickBooks snapshot of each kind
+  function latestByKind(rows) {
+    const out = {};
+    (rows || []).forEach((r) => { if (!out[r.kind]) out[r.kind] = { as_of: r.as_of, ...r.data }; });
+    return out;
+  }
+
+  // Made-up QuickBooks numbers for the sample dashboard
+  function demoFinance(day) {
+    const inv = (name, num, dueAgo, open, amount) => ({ type: "Invoice", name, num, due: day(dueAgo), date: day(dueAgo + 30), open, amount: amount || open });
+    const pay = (name, ago, open) => ({ type: "Payment", name, num: "", due: day(ago), date: day(ago), open, amount: open });
+    const bill = (name, num, dueAgo, open) => ({ type: "Bill", name, num, due: day(dueAgo), date: day(dueAgo + 30), open, amount: open });
+    const ar = [inv("Marigold Residence", "INV-1042", 48, 12400, 16800), inv("Saguaro Heights HOA", "INV-1051", 95, 1650), inv("Palo Verde Estate", "INV-1060", 21, 3800),
+      inv("Agave Residence", "INV-1063", 20, 2450), inv("Ocotillo Residence", "INV-1066", 20, 595), inv("Desert Bloom Residence", "INV-1070", -10, 3975),
+      inv("Juniper Residence", "INV-1071", -10, 900), pay("Cholla Residence", 70, -650), pay("Mesquite Residence", 120, -520)];
+    const ap = [bill("Example Tree Care", "7731", 23, 9100), bill("Sample Consulting Co.", "", 20, 6200), bill("Desert Nursery Supply", "554", 10, 1325),
+      bill("Example Tree Care", "7790", -5, 2722), bill("Irrigation Parts Co.", "88", -15, 467), { type: "Bill Payment (Check)", name: "Example Tree Care", num: "Zelle", due: day(150), date: day(150), open: -1275, amount: -2550 }];
+    const months = [], inc = [], cogs = [], exp = [], fees = [], cons = [];
+    const now = new Date();
+    for (let i = 12; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push(i ? d.toLocaleDateString("en-US", { month: "short", year: "numeric" }) : `${d.toLocaleDateString("en-US", { month: "short" })} 1-${now.getDate()} ${d.getFullYear()}`);
+      const base = [38, 52, 41, 47, 60, 72, 39, 44, 51, 58, 49, 66, 34][12 - i] * 1000;
+      inc.push(base); cogs.push(Math.round(base * (0.42 + (i % 3) * 0.06))); exp.push(Math.round(17000 + (i % 4) * 3500)); fees.push(Math.round(base * 0.013)); cons.push(i < 2 ? 0 : Math.round(base * 0.25));
+    }
+    const sum = (a) => a.reduce((t, x) => t + x, 0);
+    const net = inc.map((x, i) => x - cogs[i] - exp[i]);
+    [inc, cogs, exp, fees, cons, net].forEach((a) => a.push(sum(a))); months.push("Total");
+    return {
+      ar_detail: { as_of: day(0), items: ar, total: sum(ar.map((x) => x.open)) },
+      ap_detail: { as_of: day(0), items: ap, total: sum(ap.map((x) => x.open)) },
+      pnl_monthly: { as_of: day(0), basis: "cash", months, lines: { "Total Income": inc, "Total Cost of Goods Sold (all)": cogs, "Total Expenses": exp, "Net Income": net, "QuickBooks Payments Fees": fees, "Total for Billable Consultants Fees": cons } },
+      balance_sheet: { as_of: day(0), total_bank: 18450, bank: { "Operating (1234)": 15200, "Savings (5678)": 3250 } },
+    };
+  }
+
+  // =====================================================================
+  // Cash flow: QuickBooks snapshots plus the Time Tracker, turned into
+  // a few plain suggestions for today
+  // =====================================================================
+  const QBO = "https://qbo.intuit.com/app/";
+  function computeCash(f, c) {
+    if (!f || (!f.ar_detail && !f.ap_detail && !f.pnl_monthly)) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const dayTs = (iso) => { const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number); return new Date(y, m - 1, d).getTime(); };
+    const late = (x) => Math.round((today.getTime() - dayTs(x.due)) / DAY);
+    const sum = (list) => list.reduce((t, x) => t + Number(x.open || 0), 0);
+    const ar = (f.ar_detail && f.ar_detail.items) || [];
+    const ap = (f.ap_detail && f.ap_detail.items) || [];
+
+    const invoices = ar.filter((x) => x.open > 0);
+    const credits = ar.filter((x) => x.open < 0);
+    const lateInv = invoices.filter((x) => late(x) > 0).sort((a, b) => b.open - a.open);
+    const soonInv = invoices.filter((x) => late(x) <= 0 && late(x) >= -14);
+    const bills = ap.filter((x) => x.open > 0);
+    const billCredits = ap.filter((x) => x.open < 0);
+    const lateBills = bills.filter((x) => late(x) > 0).sort((a, b) => b.open - a.open);
+    const soonBills = bills.filter((x) => late(x) <= 0 && late(x) >= -14);
+
+    // Monthly history (cash basis): money in, money out, what was left
+    let hist = [];
+    const pl = f.pnl_monthly;
+    if (pl && pl.months) {
+      const L = pl.lines || {};
+      const get = (k, i) => Number((L[k] || [])[i] || 0);
+      hist = pl.months.map((m, i) => ({ m, inc: get("Total Income", i), out: get("Total Cost of Goods Sold (all)", i) + get("Total Expenses", i), net: get("Net Income", i),
+        fees: get("QuickBooks Payments Fees", i), cons: get("Total for Billable Consultants Fees", i) })).filter((x) => x.m !== "Total");
+    }
+    const full = hist.filter((x) => !/\d-\d/.test(x.m));        // whole months only
+    const last12 = full.slice(-12);
+    const last3 = full.slice(-3);
+    const avg = (list, k) => (list.length ? list.reduce((t, x) => t + x[k], 0) / list.length : 0);
+
+    const tips = [];
+    // 1. Chase the biggest late invoices
+    lateInv.slice(0, 3).forEach((x) => tips.push({ k: "call", tone: "pink", amount: x.open,
+      title: `Call ${x.name}`, text: `${money(x.open)} on ${x.num || "an invoice"} is ${plural(late(x), "day")} late.`,
+      list: [x], row: (y) => [`${y.name}: ${money(y.open)}`, `${y.num || "Invoice"} · due ${niceDate(y.due)} · ${plural(late(y), "day")} late`, QBO + "invoices"] }));
+    const rest = lateInv.slice(3);
+    if (rest.length) tips.push({ k: "late", tone: "pink", amount: sum(rest), title: `${plural(rest.length, "more late invoice")}`,
+      text: `${money(sum(rest))} in smaller late invoices. A friendly reminder email from QuickBooks clears most of these.`,
+      list: rest, row: (y) => [`${y.name}: ${money(y.open)}`, `${y.num || "Invoice"} · ${plural(late(y), "day")} late`, QBO + "invoices"] });
+    // 2. Approved hours not invoiced yet
+    const unbilled = c.att.toExport.reduce((t, e) => t + c.amount(e), 0);
+    if (unbilled > 0) tips.push({ k: "bill", tone: "green", amount: unbilled, title: "Invoice approved hours",
+      text: `${money(unbilled)} of approved time isn't in QuickBooks yet. Money can't come in until it's billed.`,
+      list: c.att.toExport, row: (e) => [`${c.client[e.client_id] || e.property || "Client"}: ${money(c.amount(e))}`, `${c.person[e.user_id] || ""} · ${hrs(e.hours)} · ${niceDate(e.entry_date)}`, TT], all: TT, allLabel: "Export in Time Tracker ↗" });
+    // 3. Credits sitting on customer accounts
+    if (credits.length) tips.push({ k: "credit", tone: "brown", amount: -sum(credits), title: "Clean up customer credits",
+      text: `${money(-sum(credits))} of payments aren't matched to invoices (${credits.slice(0, 3).map((x) => x.name).join(", ")}${credits.length > 3 ? "…" : ""}). Apply or refund them so "owed to you" is right.`,
+      list: credits, row: (y) => [`${y.name}: ${money(-y.open)} unapplied`, `${y.type} on ${niceDate(y.date)}`, QBO + "customers"], allLabel: "Open QuickBooks ↗", all: QBO + "customers" });
+    // 4. Bill payments not matched to bills
+    if (billCredits.length) {
+      const who = [...new Set(billCredits.map((x) => x.name))];
+      tips.push({ k: "match", tone: "brown", amount: -sum(billCredits), title: `Match payments to ${who.length === 1 ? who[0] : "vendors"}`,
+        text: `${money(-sum(billCredits))} of bill payments aren't matched to bills, so some "unpaid" bills may already be paid. Check before paying again.`,
+        list: billCredits, row: (y) => [`${y.name}: ${money(-y.open)}`, `${y.num || y.type} on ${niceDate(y.date)}`, QBO + "bills"], all: QBO + "bills", allLabel: "Open bills ↗" });
+    }
+    // 5. Bills: late and coming due
+    if (lateBills.length) tips.push({ k: "bills", tone: "brown", amount: sum(lateBills), title: "Bills past due",
+      text: `${money(sum(lateBills))} across ${plural(lateBills.length, "bill")}. Biggest: ${lateBills[0].name}, ${money(lateBills[0].open)}. Call anyone you can't pay this week and agree a date.`,
+      list: lateBills, row: (y) => [`${y.name}: ${money(y.open)}`, `due ${niceDate(y.due)} · ${plural(late(y), "day")} late`, QBO + "bills"], all: QBO + "bills", allLabel: "Open bills ↗" });
+    // 6. Consultants not paid yet makes recent months look better than they are
+    const consBills = bills.filter((x) => CONSULTANT_VENDORS.test(x.name));
+    if (consBills.length && last3.length && last3.slice(-2).every((x) => !x.cons)) tips.push({ k: "cons", tone: "brown", amount: sum(consBills), title: "Recent months look better than they are",
+      text: `${consBills.map((x) => x.name.split(" ")[0]).join(" and ")}'s bills (${money(sum(consBills))}) aren't paid yet, so they're missing from the last two months' costs. Set that money aside.`,
+      list: consBills, row: (y) => [`${y.name}: ${money(y.open)}`, `due ${niceDate(y.due)}`, QBO + "bills"], all: QBO + "bills", allLabel: "Open bills ↗" });
+    // 7. Coming due soon: send reminders before they're late
+    if (soonInv.length) tips.push({ k: "soon", tone: "green", amount: sum(soonInv), title: "Send reminders before they're late",
+      text: `${money(sum(soonInv))} comes due in the next two weeks. A reminder a few days before the due date gets paid faster.`,
+      list: soonInv, row: (y) => [`${y.name}: ${money(y.open)}`, `${y.num || "Invoice"} · due ${niceDate(y.due)}`, QBO + "invoices"] });
+    // 8. Card fees
+    const fees3 = last3.reduce((t, x) => t + x.fees, 0);
+    if (fees3 > 300) tips.push({ k: "fees", tone: "green", amount: fees3, title: "Ask big clients to pay by bank transfer",
+      text: `Card and payment fees were ${money(fees3)} over the last 3 months. Bank transfer (ACH) costs far less on invoices over $2,000.` });
+    // 9. Lumpy months: keep a cushion
+    const neg = last12.filter((x) => x.net < 0);
+    if (neg.length >= 3) tips.push({ k: "cushion", tone: "brown", amount: -avg(neg, "net"), title: "Keep a cushion",
+      text: `${neg.length} of the last ${last12.length} months spent more than came in, by ${money(-avg(neg, "net"))} on average. Try to keep at least that in the bank.` });
+
+    return {
+      asOf: (f.ar_detail || f.ap_detail || f.pnl_monthly).as_of,
+      owed: sum(invoices), owedLate: sum(lateInv), credits: -sum(credits),
+      owe: sum(bills), oweLate: sum(lateBills), billCredits: -sum(billCredits),
+      soonIn: sum(soonInv), soonOut: sum(soonBills),
+      bank: f.balance_sheet ? f.balance_sheet.total_bank : null, bankAsOf: f.balance_sheet && f.balance_sheet.as_of,
+      hist: hist.slice(-13), avgIn: avg(last3, "inc"), avgOut: avg(last3, "out"), tips, lateInv, lateBills, hasPl: !!pl, hasAr: !!f.ar_detail, hasAp: !!f.ap_detail,
+    };
   }
 
   const S = DEMO ? demoStore() : liveStore();
@@ -232,6 +367,7 @@
   // =====================================================================
   function render(d, me) {
     const c = compute(d);
+    const cash = computeCash(d.finance, c);
     const sum = (list) => list.reduce((t, e) => t + c.amount(e), 0);
     const first = (me.full_name || "").split(" ")[0];
     const hour = new Date().getHours();
@@ -270,6 +406,8 @@
           <a class="btn secondary" href="${esc(TT)}">Export to QuickBooks ↗</a>
         </div>
       </div>
+
+      ${cashSection(cash)}
 
       <h2 class="dash-h">Needs attention</h2>
       <div class="att-grid">${ATT.map((a) => `
@@ -316,17 +454,62 @@
         </div>
       </div>`;
 
+    $$("[data-tip]").forEach((b) => (b.onclick = () => {
+      const t = cash.tips[Number(b.dataset.tip)];
+      openList({ label: t.title, sub: t.text, list: t.list || [], row: t.row, all: t.all || QBO + "invoices", allLabel: t.allLabel || "Open invoices ↗", eyebrow: "Cash to-do" });
+    }));
     $$("[data-att]").forEach((b) => (b.onclick = () => {
       const a = ATT.find((x) => x.k === b.dataset.att);
       openList(a);
     }));
   }
 
+  const tipLi = (t, i) => `<li class="tip ${t.tone}"><button type="button" class="tip-btn" data-tip="${i}" ${t.list && t.list.length ? "" : "disabled"}>
+    <span class="tip-title">${esc(t.title)}</span><span class="tip-text">${esc(t.text)}</span></button></li>`;
+  function cashSection(k) {
+    if (!k) return `<h2 class="dash-h">Cash flow</h2>
+      <div class="card cash-empty"><p class="muted" style="margin:0">QuickBooks numbers show here once the morning report emails start arriving.</p></div>`;
+    const stale = k.asOf && Date.now() - new Date(k.asOf + "T12:00:00").getTime() > 3 * DAY;
+    const max = Math.max(1, ...k.hist.map((x) => Math.max(x.inc, x.out)));
+    const short = (m) => m.replace(/ 1-\d+/, "").replace(/ \d{4}$/, "");
+    return `
+      <h2 class="dash-h">Cash flow <span class="muted small">From QuickBooks, as of ${esc(niceDate(k.asOf))}</span></h2>
+      ${stale ? `<p class="cash-stale">These QuickBooks numbers are more than 3 days old. Check that the morning report emails are still being sent.</p>` : ""}
+      <div class="cash-grid">
+        <div class="card wk cash-tile"><div class="wk-label">Owed to you</div><div class="wk-num">${k.hasAr ? money(k.owed) : "–"}</div>
+          <p class="wk-sub">${k.hasAr ? `<b class="neg">${money(k.owedLate)} past due</b>${k.credits ? ` · ${money(k.credits)} in credits to apply` : ""}` : "Needs the A/R Aging Detail"}</p></div>
+        <div class="card wk cash-tile"><div class="wk-label">Bills you owe</div><div class="wk-num brown">${k.hasAp ? money(k.owe) : "–"}</div>
+          <p class="wk-sub">${k.hasAp ? `<b class="neg">${money(k.oweLate)} past due</b>${k.billCredits ? ` · ${money(k.billCredits)} paid but not matched` : ""}` : "Needs the A/P Aging Detail"}</p></div>
+        <div class="card wk cash-tile"><div class="wk-label">Next 2 weeks</div><div class="wk-num ${k.soonIn - k.soonOut < 0 ? "neg" : ""}">${k.soonIn - k.soonOut < 0 ? "−" : ""}${money(Math.abs(k.soonIn - k.soonOut))}</div>
+          <p class="wk-sub">${money(k.soonIn)} coming due in · ${money(k.soonOut)} bills due out</p><p class="wk-note">Not counting anything already late</p></div>
+        <div class="card wk cash-tile"><div class="wk-label">In the bank</div><div class="wk-num">${k.bank != null ? money(k.bank) : "–"}</div>
+          <p class="wk-sub">${k.bank != null ? `As of ${esc(niceDate(k.bankAsOf))}` : "Shows once the Balance Sheet email arrives"}</p></div>
+      </div>
+      <div class="dash-two cash-two">
+        <div class="card">
+          <h3 class="dash-h3" style="margin-top:0">Today's cash to-dos</h3>
+          ${k.tips.length ? `<ol class="tips">${k.tips.slice(0, 6).map(tipLi).join("")}</ol>
+            ${k.tips.length > 6 ? `<details class="tips-more"><summary>${plural(k.tips.length - 6, "more suggestion")}</summary><ol class="tips">${k.tips.slice(6).map((t, i) => tipLi(t, i + 6)).join("")}</ol></details>` : ""}`
+            : `<p class="muted">Nothing pressing. Nice.</p>`}
+        </div>
+        <div class="card">
+          <h3 class="dash-h3" style="margin-top:0">Money in and out by month</h3>
+          ${k.hist.length ? `<div class="mchart" role="img" aria-label="Money in and out by month">${k.hist.map((x) => `
+            <div class="mcol" title="${esc(x.m)}: in ${money(x.inc)}, out ${money(x.out)}, left ${money(x.net)}">
+              <div class="mbars"><i class="in" style="--h:${(Math.max(0, x.inc) / max) * 100}%"></i><i class="out" style="--h:${(Math.max(0, x.out) / max) * 100}%"></i></div>
+              <span class="mnet ${x.net < 0 ? "neg" : ""}">${Math.round(x.net / 1000) < 0 ? "−" : ""}${Math.abs(Math.round(x.net / 1000))}k</span>
+              <span class="mlabel">${esc(short(x.m))}</span></div>`).join("")}</div>
+            <p class="small muted mlegend"><i class="in"></i> Came in <i class="out"></i> Went out. The number under each month is what was left (cash basis). The last 3 months averaged ${money(k.avgIn)} in and ${money(k.avgOut)} out.</p>`
+            : `<p class="muted small">Shows once the monthly Profit and Loss arrives.</p>`}
+        </div>
+      </div>`;
+  }
+
   function openList(a) {
     const root = $("#modalRoot");
     const rows = a.list.slice(0, 60).map(a.row);
     root.innerHTML = `<div class="modal-back"><div class="modal" role="dialog" aria-modal="true">
-      <div class="lc-head"><div><p class="eyebrow">Needs attention</p><h2 class="lc-title">${esc(a.label)}</h2><p class="small muted" style="margin:2px 0 0">${esc(a.sub)}</p></div>
+      <div class="lc-head"><div><p class="eyebrow">${esc(a.eyebrow || "Needs attention")}</p><h2 class="lc-title">${esc(a.label)}</h2><p class="small muted" style="margin:2px 0 0">${esc(a.sub)}</p></div>
         <button type="button" class="lc-x secondary" data-close aria-label="Close">✕</button></div>
       ${rows.length ? `<ul class="att-list">${rows.map(([t, s, href]) => `<li><a href="${esc(href)}"><strong>${esc(t)}</strong><span>${esc(s)}</span></a></li>`).join("")}</ul>` : `<p class="muted">Nothing here. Nice.</p>`}
       ${a.list.length > rows.length ? `<p class="small muted">Showing ${rows.length} of ${a.list.length}.</p>` : ""}
