@@ -81,7 +81,7 @@
       async signOut() { await sb.auth.signOut(); },
       async load() {
         const since = isoDate(new Date(Date.now() - 180 * DAY));
-        const [leads, notes, intakes, reports, sends, entries, services, clients, people, snaps] = await Promise.all([
+        const [leads, notes, intakes, reports, sends, entries, services, clients, people, snaps, actions] = await Promise.all([
           soft(sb.from("leads").select("id, lead_date, created_at, updated_at, project_name, contact_name, company, email, phone, channel, stage, in_quickbooks, won_at, details")),
           soft(sb.from("lead_notes").select("lead_id, created_at, author_name, body, automatic").order("created_at", { ascending: false }).limit(60)),
           soft(sb.from("lead_intakes").select("lead_id, source, submitted_at").order("submitted_at", { ascending: false }).limit(30)),
@@ -92,9 +92,13 @@
           soft(sb.from("clients").select("id, name")),
           soft(sb.from("profiles").select("id, full_name, email")),
           soft(sb.from("finance_snapshots").select("kind, as_of, data").order("as_of", { ascending: false }).limit(40)),
+          soft(sb.from("cash_todo_actions").select("id, todo_key, action, title, detail, amount, acted_by_name, acted_at").order("acted_at", { ascending: false }).limit(500)),
         ]);
-        return { leads, notes, intakes, reports, sends, entries, services, clients, people, finance: latestByKind(snaps) };
+        return { leads, notes, intakes, reports, sends, entries, services, clients, people, finance: latestByKind(snaps), actions };
       },
+      // Mark a cash to-do done or dismissed, or undo that
+      async act(row) { ok(await sb.from("cash_todo_actions").upsert(row, { onConflict: "todo_key" })); },
+      async undo(key) { ok(await sb.from("cash_todo_actions").delete().eq("todo_key", key)); },
     };
   }
 
@@ -147,7 +151,15 @@
     ];
     const me = { id: "u4", email: "demo@harmonyhorticulture.com", full_name: "Krista O'Malley", role: "admin", active: true };
     const finance = demoFinance(day);
-    return { async me() { return me; }, async signIn() {}, async signOut() {}, async load() { return { leads, notes, intakes, reports, sends, entries, services, clients, people, finance }; } };
+    const AKEY = "hh-dash-demo-actions";
+    const readA = () => { try { return JSON.parse(localStorage.getItem(AKEY)) || []; } catch (e) { return []; } };
+    const writeA = (a) => { try { localStorage.setItem(AKEY, JSON.stringify(a)); } catch (e) { /* private mode */ } };
+    return {
+      async me() { return me; }, async signIn() {}, async signOut() {},
+      async load() { return { leads, notes, intakes, reports, sends, entries, services, clients, people, finance, actions: readA() }; },
+      async act(row) { writeA([{ ...row, id: "a" + Date.now(), acted_at: new Date().toISOString() }, ...readA().filter((a) => a.todo_key !== row.todo_key)]); },
+      async undo(key) { writeA(readA().filter((a) => a.todo_key !== key)); },
+    };
   }
 
 
@@ -192,7 +204,9 @@
   // a few plain suggestions for today
   // =====================================================================
   const QBO = "https://qbo.intuit.com/app/";
-  function computeCash(f, c) {
+  // Short, stable fingerprint of a string
+  const hash = (str) => { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
+  function computeCash(f, c, actions) {
     if (!f || (!f.ar_detail && !f.ap_detail && !f.pnl_monthly)) return null;
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const dayTs = (iso) => { const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number); return new Date(y, m - 1, d).getTime(); };
@@ -271,13 +285,21 @@
     if (neg.length >= 3) tips.push({ k: "cushion", tone: "brown", amount: -avg(neg, "net"), title: "Keep a cushion",
       text: `${neg.length} of the last ${last12.length} months spent more than came in, by ${money(-avg(neg, "net"))} on average. Try to keep at least that in the bank.` });
 
+    // A to-do keeps its key while the same items are behind it. New items
+    // (a new late invoice, a new bill) make a new to-do, so it comes back.
+    const asOf = (f.ar_detail || f.ap_detail || f.pnl_monthly).as_of;
+    const idOf = (x) => x.id || x.num || `${x.name}|${x.date}`;
+    tips.forEach((t) => { t.key = t.k + ":" + (t.list && t.list.length ? hash(t.list.map(idOf).sort().join(",")) : String(asOf).slice(0, 7)); });
+    const handled = new Set((actions || []).map((a) => a.todo_key));
+    const open = tips.filter((t) => !handled.has(t.key));
+
     return {
-      asOf: (f.ar_detail || f.ap_detail || f.pnl_monthly).as_of,
+      asOf,
       owed: sum(invoices), owedLate: sum(lateInv), credits: -sum(credits),
       owe: sum(bills), oweLate: sum(lateBills), billCredits: -sum(billCredits),
       soonIn: sum(soonInv), soonOut: sum(soonBills),
       bank: f.balance_sheet ? f.balance_sheet.total_bank : null, bankAsOf: f.balance_sheet && f.balance_sheet.as_of,
-      hist: hist.slice(-13), avgIn: avg(last3, "inc"), avgOut: avg(last3, "out"), tips, lateInv, lateBills, hasPl: !!pl, hasAr: !!f.ar_detail, hasAp: !!f.ap_detail,
+      hist: hist.slice(-13), avgIn: avg(last3, "inc"), avgOut: avg(last3, "out"), tips: open, history: actions || [], lateInv, lateBills, hasPl: !!pl, hasAr: !!f.ar_detail, hasAp: !!f.ap_detail,
     };
   }
 
@@ -367,7 +389,7 @@
   // =====================================================================
   function render(d, me) {
     const c = compute(d);
-    const cash = computeCash(d.finance, c);
+    const cash = computeCash(d.finance, c, d.actions);
     const sum = (list) => list.reduce((t, e) => t + c.amount(e), 0);
     const first = (me.full_name || "").split(" ")[0];
     const hour = new Date().getHours();
@@ -458,6 +480,16 @@
       const t = cash.tips[Number(b.dataset.tip)];
       openList({ label: t.title, sub: t.text, list: t.list || [], row: t.row, all: t.all || QBO + "invoices", allLabel: t.allLabel || "Open invoices ↗", eyebrow: "Cash to-do" });
     }));
+    $$("[data-act]").forEach((b) => (b.onclick = async () => {
+      const t = cash.tips[Number(b.dataset.i)];
+      b.disabled = true;
+      try {
+        await S.act({ todo_key: t.key, action: b.dataset.act, title: t.title, detail: t.text, amount: Math.round(t.amount || 0), acted_by_name: me.full_name || me.email });
+        toast(b.dataset.act === "done" ? "Marked done. It's in History." : "Dismissed. It's in History.");
+        await redraw();
+      } catch (e) { b.disabled = false; toast("Couldn't save that: " + e.message); }
+    }));
+    $$("[data-history]").forEach((b) => (b.onclick = () => openHistory(cash.history)));
     $$("[data-att]").forEach((b) => (b.onclick = () => {
       const a = ATT.find((x) => x.k === b.dataset.att);
       openList(a);
@@ -465,7 +497,8 @@
   }
 
   const tipLi = (t, i) => `<li class="tip ${t.tone}"><button type="button" class="tip-btn" data-tip="${i}" ${t.list && t.list.length ? "" : "disabled"}>
-    <span class="tip-title">${esc(t.title)}</span><span class="tip-text">${esc(t.text)}</span></button></li>`;
+    <span class="tip-title">${esc(t.title)}</span><span class="tip-text">${esc(t.text)}</span></button>
+    <span class="tip-acts"><button type="button" class="tip-act done" data-act="done" data-i="${i}" title="Mark done" aria-label="Mark done: ${esc(t.title)}">✓ Done</button><button type="button" class="tip-act" data-act="dismissed" data-i="${i}" title="Dismiss" aria-label="Dismiss: ${esc(t.title)}">Dismiss</button></span></li>`;
   function cashSection(k) {
     if (!k) return `<h2 class="dash-h">Cash flow</h2>
       <div class="card cash-empty"><p class="muted" style="margin:0">QuickBooks numbers show here once the morning report emails start arriving.</p></div>`;
@@ -487,7 +520,8 @@
       </div>
       <div class="dash-two cash-two">
         <div class="card">
-          <h3 class="dash-h3" style="margin-top:0">Today's cash to-dos</h3>
+          <div class="tips-head"><h3 class="dash-h3" style="margin:0">Today's cash to-dos</h3>
+            <button type="button" class="link-btn" data-history>History${k.history.length ? ` (${k.history.length})` : ""}</button></div>
           ${k.tips.length ? `<ol class="tips">${k.tips.slice(0, 6).map(tipLi).join("")}</ol>
             ${k.tips.length > 6 ? `<details class="tips-more"><summary>${plural(k.tips.length - 6, "more suggestion")}</summary><ol class="tips">${k.tips.slice(6).map((t, i) => tipLi(t, i + 6)).join("")}</ol></details>` : ""}`
             : `<p class="muted">Nothing pressing. Nice.</p>`}
@@ -504,6 +538,38 @@
         </div>
       </div>`;
   }
+
+  function openHistory(rows) {
+    const root = $("#modalRoot");
+    const when = (iso) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+    root.innerHTML = `<div class="modal-back"><div class="modal wide" role="dialog" aria-modal="true">
+      <div class="lc-head"><div><p class="eyebrow">Cash to-dos</p><h2 class="lc-title">History</h2><p class="small muted" style="margin:2px 0 0">Everything marked done or dismissed, newest first. Undo puts it back on the list.</p></div>
+        <button type="button" class="lc-x secondary" data-close aria-label="Close">✕</button></div>
+      ${rows.length ? `<ul class="hist-list">${rows.map((r) => `<li>
+        <span class="hist-pill ${r.action}">${r.action === "done" ? "Done" : "Dismissed"}</span>
+        <div class="hist-main"><strong>${esc(r.title)}</strong>${r.detail ? `<span>${esc(r.detail)}</span>` : ""}
+          <span class="hist-meta">${esc(when(r.acted_at))}${r.acted_by_name ? ` · ${esc(r.acted_by_name.split(" ")[0])}` : ""}</span></div>
+        <button type="button" class="link-btn" data-undo="${esc(r.todo_key)}">Undo</button></li>`).join("")}</ul>`
+        : `<p class="muted">Nothing yet. When you mark a to-do done or dismiss it, it shows here with the date.</p>`}
+    </div></div>`;
+    const close = () => { root.innerHTML = ""; document.removeEventListener("keydown", onKey); };
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", onKey);
+    $("[data-close]", root).onclick = close;
+    $(".modal-back", root).onclick = (e) => { if (e.target.classList.contains("modal-back")) close(); };
+    $$("[data-undo]", root).forEach((b) => (b.onclick = async () => {
+      b.disabled = true;
+      try { await S.undo(b.dataset.undo); close(); toast("Back on the list."); await redraw(); } catch (e) { b.disabled = false; toast("Couldn't undo: " + e.message); }
+    }));
+  }
+
+  function toast(msg) {
+    let t = $("#dashToast");
+    if (!t) { t = document.createElement("div"); t.id = "dashToast"; t.className = "toast dash-toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
+    t.textContent = msg; t.classList.add("show");
+    clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2600);
+  }
+  let redraw = async () => {};
 
   function openList(a) {
     const root = $("#modalRoot");
@@ -571,6 +637,7 @@
       try { sessionStorage.setItem("hh-dash-seen", "1"); } catch (e) { /* private mode */ }
       shell(me);
       const draw = async () => render(await S.load(), me);
+      redraw = draw;
       await draw();
       // Keep it current while it's open
       if (!DEMO) setInterval(() => { if (document.visibilityState === "visible" && !$("#modalRoot").innerHTML) draw().catch(console.error); }, 5 * 60 * 1000);
