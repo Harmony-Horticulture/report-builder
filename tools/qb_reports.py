@@ -64,11 +64,20 @@ def pnl_monthly(rows):
     return {"months": months, "lines": lines, "basis": basis}
 
 def balance_sheet(rows):
-    lines = {}
-    for r in rows[5:]:
-        if r[0] and isinstance(r[1], (int, float)): lines[str(r[0]).strip()] = num(r[1])
-    bank = {k: v for k, v in lines.items() if re.search(r"\(\d{4}\)|checking|savings|bank", k, re.I) and not k.startswith("Total")}
-    return {"lines": lines, "bank": bank, "total_bank": lines.get("Total Bank Accounts", round(sum(bank.values()), 2))}
+    lines, bank, cards, section = {}, {}, {}, None
+    for r in rows[4:]:
+        name = str(r[0] or "").strip()
+        if not name: continue
+        if name in ("Bank Accounts", "Credit Cards"): section = name; continue
+        if name.startswith("Total"): section = None
+        if isinstance(r[1], (int, float)):
+            lines[name] = num(r[1])
+            if section == "Bank Accounts": bank[name] = num(r[1])
+            if section == "Credit Cards": cards[name] = num(r[1])
+    return {"lines": lines, "bank": bank, "cards": cards,
+            "total_bank": lines.get("Total Bank Accounts", round(sum(bank.values()), 2)),
+            "total_cards": lines.get("Total Credit Cards", round(sum(cards.values()), 2)),
+            "undeposited": lines.get("Undeposited Funds", 0)}
 
 def parse(path):
     ws = openpyxl.load_workbook(path, data_only=True).active

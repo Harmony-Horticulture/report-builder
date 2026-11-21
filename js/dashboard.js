@@ -280,7 +280,13 @@
     const fees3 = last3.reduce((t, x) => t + x.fees, 0);
     if (fees3 > 300) tips.push({ k: "fees", tone: "green", amount: fees3, title: "Ask big clients to pay by bank transfer",
       text: `Card and payment fees were ${money(fees3)} over the last 3 months. Bank transfer (ACH) costs far less on invoices over $2,000.` });
-    // 9. Lumpy months: keep a cushion
+    // 9. From the Balance Sheet: money received but not deposited, and card balances
+    const bs = f.balance_sheet;
+    if (bs && bs.undeposited > 500) tips.push({ k: "deposit", tone: "green", amount: bs.undeposited, title: "Deposit what's waiting",
+      text: `${money(bs.undeposited)} is sitting in Undeposited Funds: payments received but not recorded as deposited. Take any checks to the bank, then record the deposit in QuickBooks.` });
+    if (bs && bs.total_cards > 1000) tips.push({ k: "cards", tone: "brown", amount: bs.total_cards, title: "Credit cards to pay down",
+      text: `${money(bs.total_cards)} is on company credit cards (${Object.entries(bs.cards || {}).filter(([, v]) => v > 0).map(([n, v]) => `${n.replace(/\s*-?\s*CC.*$/i, "").replace(/\s*\(\d+\)/, "")} ${money(v)}`).join(", ")}). Pay these in full before interest is charged.` });
+    // 10. Lumpy months: keep a cushion
     const neg = last12.filter((x) => x.net < 0);
     if (neg.length >= 3) tips.push({ k: "cushion", tone: "brown", amount: -avg(neg, "net"), title: "Keep a cushion",
       text: `${neg.length} of the last ${last12.length} months spent more than came in, by ${money(-avg(neg, "net"))} on average. Try to keep at least that in the bank.` });
@@ -298,7 +304,7 @@
       owed: sum(invoices), owedLate: sum(lateInv), credits: -sum(credits),
       owe: sum(bills), oweLate: sum(lateBills), billCredits: -sum(billCredits),
       soonIn: sum(soonInv), soonOut: sum(soonBills),
-      bank: f.balance_sheet ? f.balance_sheet.total_bank : null, bankAsOf: f.balance_sheet && f.balance_sheet.as_of,
+      bank: bs ? bs.total_bank : null, bankAsOf: bs && bs.as_of, cards: bs ? bs.total_cards || 0 : 0, undeposited: bs ? bs.undeposited || 0 : 0,
       hist: hist.slice(-13), avgIn: avg(last3, "inc"), avgOut: avg(last3, "out"), tips: open, history: actions || [], lateInv, lateBills, hasPl: !!pl, hasAr: !!f.ar_detail, hasAp: !!f.ap_detail,
     };
   }
@@ -516,7 +522,7 @@
         <div class="card wk cash-tile"><div class="wk-label">Next 2 weeks</div><div class="wk-num ${k.soonIn - k.soonOut < 0 ? "neg" : ""}">${k.soonIn - k.soonOut < 0 ? "−" : ""}${money(Math.abs(k.soonIn - k.soonOut))}</div>
           <p class="wk-sub">${money(k.soonIn)} coming due in · ${money(k.soonOut)} bills due out</p><p class="wk-note">Not counting anything already late</p></div>
         <div class="card wk cash-tile"><div class="wk-label">In the bank</div><div class="wk-num">${k.bank != null ? money(k.bank) : "–"}</div>
-          <p class="wk-sub">${k.bank != null ? `As of ${esc(niceDate(k.bankAsOf))}` : "Shows once the Balance Sheet email arrives"}</p></div>
+          <p class="wk-sub">${k.bank != null ? `${k.undeposited ? `${money(k.undeposited)} waiting to be deposited · ` : ""}${k.cards ? `${money(k.cards)} on credit cards` : `As of ${esc(niceDate(k.bankAsOf))}`}` : "Shows once the Balance Sheet email arrives"}</p></div>
       </div>
       <div class="dash-two cash-two">
         <div class="card">
