@@ -166,3 +166,24 @@ button.tip-act:hover { filter: none; background: #F7F7F7; }
 .how-table td.num { text-align: right; white-space: nowrap; font-weight: 600; }
 .how-table td.num.neg { color: #B3261E; }
 .mlegend button.link-btn { padding: 0 2px; font-size: inherit; }
+
+/* Cash forecast */
+.fc-strip { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 12px 0 0; padding: 10px 14px; border-radius: 10px; background: #EEF6EA; border: 1px solid #CFE5C3; color: inherit; text-decoration: none; font-size: 0.9rem; }
+.fc-strip.tight { background: #FDEEF5; border-color: #F7C6DE; }
+.fc-strip:hover { filter: brightness(0.98); }
+.fc-go { font-weight: 700; color: var(--green); white-space: nowrap; }
+.fc-strip.tight .fc-go { color: #C2307A; }
+.fchart { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; align-items: end; height: 240px; margin-top: 14px; }
+.fchart .mnet, .fchart .mlabel { height: 14px; line-height: 14px; }
+.fchart .mcol { position: relative; z-index: 1; }
+.fchart .mbars i { width: 70%; background: var(--green); }
+.fchart .mbars i.low { background: #F065A5; }
+.fc-line { position: absolute; left: 0; right: 0; bottom: calc(31px + (100% - 31px) * var(--y)); border-top: 2px dashed #C9A48C; z-index: 2; pointer-events: none; }
+.fc-line span { position: absolute; right: 0; top: -18px; font-size: 0.66rem; font-style: normal; color: #5F351B; background: rgba(255,255,255,0.85); padding: 0 4px; border-radius: 3px; }
+.fc-scroll { overflow-x: auto; }
+.fc-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.fc-table th { text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gray); padding: 6px 8px; border-bottom: 2px solid #E2E2E2; white-space: nowrap; }
+.fc-table td { padding: 7px 8px; border-bottom: 1px solid #EEE; white-space: nowrap; }
+.fc-table .num { text-align: right; }
+.fc-table tr.is-low td { background: #FDEEF5; }
+@media (max-width: 480px) { .fchart { height: 190px; gap: 2px; } .fc-line span { font-size: 0.58rem; } .fchart .mnet { visibility: hidden; } .fchart .mcol:nth-of-type(even) .mlabel { visibility: hidden; } .fchart .mlabel { overflow: visible; } }
