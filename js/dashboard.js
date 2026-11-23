@@ -444,6 +444,8 @@
     return {
       explain,
       fc,
+      // Midday updates from QuickBooks payment and estimate emails
+      updates: [...((f.ar_detail && f.ar_detail.updates) || []), ...((f.estimates && f.estimates.updates) || [])],
       asOf,
       owed: sum(invoices), owedLate: sum(lateInv), credits: -sum(credits),
       owe: sum(bills), oweLate: sum(lateBills), billCredits: -sum(billCredits),
@@ -666,7 +668,7 @@
     const f = k.fc, tight = f.low.end < f.cushion;
     const max = Math.max(1, f.startBal, f.cushion, ...f.weeks.map((w) => w.end));
     return head + `
-      <p class="small muted" style="margin:-6px 0 14px">From QuickBooks, as of ${esc(niceDate(f.asOf))}. Updated every weekday morning.</p>
+      <p class="small muted" style="margin:-6px 0 14px">From QuickBooks, as of ${esc(niceDate(f.asOf))}${updNote(k.updates)}. Reloaded every weekday morning, with payments and approved estimates added at 1 PM.</p>
       <div class="cash-grid">
         <div class="card wk cash-tile" data-explain="forecast" role="button" tabindex="0" aria-label="How this is worked out"><div class="wk-label">Today</div><div class="wk-num">${money(f.startBal)}</div><p class="wk-sub">Bank plus money waiting to be deposited</p><span class="tile-how">How this is worked out ›</span></div>
         <div class="card wk cash-tile" data-explain="forecast" role="button" tabindex="0" aria-label="How this is worked out"><div class="wk-label">Lowest point</div><div class="wk-num ${tight ? "neg" : ""}">${signed(f.low.end)}</div><p class="wk-sub">Week of ${esc(fcWeek(f.low.from))}${tight ? ` · <b class="neg">less than a month of spending</b>` : ""}</p><span class="tile-how">How this is worked out ›</span></div>
@@ -707,6 +709,15 @@
       </div>`;
   }
 
+  // "· updated 1:04 PM: 2 payments, 1 estimate approved"
+  function updNote(list) {
+    if (!list || !list.length) return "";
+    const last = list.reduce((a, u) => (u.at > a ? u.at : a), "");
+    const pay = list.filter((u) => u.type === "payment"), est = list.filter((u) => u.type === "estimate");
+    const bits = [pay.length ? `${plural(pay.length, "payment")} (${money(pay.reduce((t, u) => t + Number(u.amount || 0), 0))})` : "", est.length ? `${plural(est.length, "estimate")} approved` : ""].filter(Boolean);
+    return ` · updated ${esc(new Date(last).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }))}: ${esc(bits.join(", "))}`;
+  }
+
   function cashSection(k) {
     if (!k) return `<h2 class="dash-h">Cash flow</h2>
       <div class="card cash-empty"><p class="muted" style="margin:0">QuickBooks numbers show here once the morning report emails start arriving.</p></div>`;
@@ -714,7 +725,7 @@
     const max = Math.max(1, ...k.hist.map((x) => Math.max(x.inc, x.out)));
     const short = (m) => m.replace(/ 1-\d+/, "").replace(/ \d{4}$/, "");
     return `
-      <h2 class="dash-h">Cash flow <span class="muted small">From QuickBooks, as of ${esc(niceDate(k.asOf))}</span></h2>
+      <h2 class="dash-h">Cash flow <span class="muted small">From QuickBooks, as of ${esc(niceDate(k.asOf))}${updNote(k.updates)}</span></h2>
       ${stale ? `<p class="cash-stale">These QuickBooks numbers are more than 3 days old. Check that the morning report emails are still being sent.</p>` : ""}
       <div class="cash-grid">
         <div class="card wk cash-tile" data-explain="owed" role="button" tabindex="0" aria-label="How this is worked out"><div class="wk-label">Owed to you</div><div class="wk-num">${k.hasAr ? money(k.owed) : "–"}</div>
