@@ -95,12 +95,15 @@ def estimates(rows):
             "accepted_on": mdy(g("Accepted on")), "expires": mdy(g("Expiration date")), "invoice": str(g("Invoice number") or ""),
             "amount": num(g("Amount")),
         })
+    if not items: raise SystemExit("Estimates by Customer has no estimate lines: turn off \"Collapse\" so each estimate is listed")
     return {"items": items, "total": round(sum(i["amount"] or 0 for i in items), 2)}
 
 def parse(path):
     ws = openpyxl.load_workbook(path, data_only=True).active
     rows = [list(r) + [None] * 10 for r in ws.iter_rows(values_only=True)]
-    title = str(rows[1][0] or "").strip()
+    # Exports have the company name first; scheduled emails start with the title
+    names = ("A/R Aging Detail", "A/P Aging Detail", "Balance Sheet", "Estimates by Customer", "Profit and Loss")
+    title = next((str(r[0]).strip() for r in rows[:3] if r[0] and str(r[0]).strip().startswith(names)), str(rows[1][0] or "").strip())
     if title.startswith("A/R Aging Detail"): return "ar_detail", as_of_from(rows), aging(rows, "Customer full name")
     if title.startswith("A/P Aging Detail"): return "ap_detail", as_of_from(rows), aging(rows, "Vendor display name")
     if title.startswith("Balance Sheet"): return "balance_sheet", as_of_from(rows), balance_sheet(rows)
