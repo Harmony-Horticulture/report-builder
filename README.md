@@ -39,7 +39,15 @@ The **Leads** page (`leads.html`, linked from the menu for admins) keeps every n
 
 ## SOPs
 
-The **SOPs** page (`sops.html`, in the menu for everyone, and in the Time Tracker menu too) is the library of standard operating procedures. SOPs are grouped by category with a search box that also finds words inside them. Each one opens as a readable page in the app, page by page, on a phone or computer, with a **Download PDF** button. Admins use **+ Add an SOP** to upload the PDF (and the Word file if they have it, which only admins can download), pick the category, and choose who can see it: everyone, or admins only. **Update** replaces the file and keeps the old one under Past versions; **Archive** hides an SOP from everyone but admins. Google Drive stays the master copy, and each SOP can link to its Drive file. **Setting it up:** run `supabase/07_sops.sql` once in Supabase > SQL Editor.
+The **SOPs** page (`sops.html`, in the menu for everyone, and in the Time Tracker menu too) is the library of standard operating procedures, grouped by category, with a search box that also finds words inside them.
+
+- Each SOP is shown in the app in the same branded layout as the SOP Template, and anyone can **Download PDF**. Admins can also download the editable **Word** file.
+- Admins tap **Edit** to change any part: the details table, sections, text, bullet lists, step tables, troubleshooting tables and highlight boxes. Put `**two stars**` around words to make them bold. Section numbers and step numbers keep themselves in order.
+- **Save** asks what changed, then sets the revised date to today and records who saved it, raises the version (1.1 to 1.2) and adds a row to the Revision History with Kasey as approver. The old version is kept under Past versions.
+- With Google Drive set up (**Set up Google Drive** on the SOPs page, using `integrations/sop-drive.gs`), every save also puts the new Word file and PDF in the Drive SOP folder and moves the old copies into its Archive folder.
+- **+ Add an SOP** starts a new one from the template, or uploads a PDF made somewhere else.
+
+**Setting it up:** run `supabase/07_sops.sql` and then `supabase/08_sop_editing.sql` once in Supabase > SQL Editor.
 
 ## How it's built
 
@@ -62,8 +70,9 @@ The **SOPs** page (`sops.html`, in the menu for everyone, and in the Time Tracke
 | `supabase/01_reports.sql` | Report tables, security rules, photo storage and the two starting report types |
 | `supabase/functions/` | The email and AI polish helpers, and `leads-inbox` for incoming leads |
 | `leads.html`, `js/leads.js`, `css/leads.css` | The Leads page |
-| `sops.html`, `js/sops.js`, `css/sops.css` | The SOPs page. `vendor/pdfjs/` shows the PDFs on screen ([PDF.js](https://mozilla.github.io/pdf.js/)) |
-| `supabase/07_sops.sql` | SOP tables, who-can-see rules and private file storage |
+| `sops.html`, `js/sops.js`, `css/sops.css` | The SOPs page and editor. `js/sop-doc.js` draws an SOP on screen and makes its PDF and Word files. `vendor/pdfjs/` shows the PDFs on screen ([PDF.js](https://mozilla.github.io/pdf.js/)) |
+| `supabase/07_sops.sql`, `08_sop_editing.sql` | SOP tables, who-can-see rules, private file storage and SOP editing |
+| `integrations/sop-drive.gs` | The small Google script that saves SOPs into the Drive SOP folder |
 | `supabase/02_leads.sql` | Lead tables and security rules |
 | `integrations/google-form-intake.gs` | Sends each intake form answer to the Leads page |
 
