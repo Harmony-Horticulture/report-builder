@@ -154,6 +154,7 @@
   // transaction list (.csv). Vendor names come from a column or from the
   // group heading rows QuickBooks puts above each vendor.
   // ---------------------------------------------------------------
+  const DIRECT_PAID = /^(expense|check|cash expense|credit card expense|credit card charge)$/i; // paid on the spot, no bill
   const NOT_VENDOR = /^(invoice|estimate|deposit|payment|receive payment|credit memo|sales receipt|refund( receipt)?|billable expense charge|credit card payment|transfer|journal entry|statement charge|delayed (charge|credit))$/i;
   function parseQuickBooks(rows) {
     const h = findHeader(rows, [/^date$|transaction date/, /^(num|no\.?|ref ?no\.?|document number|check ?#?)$/]) || findHeader(rows, [/^date$|transaction date/, /amount|total/]);
@@ -188,11 +189,12 @@
       if (NOT_VENDOR.test(type)) continue;
       const amount = money(r[c.amount]);
       if (amount == null) continue;
-      const kind = paymentsOnly ? "payment" : /bill payment|payment|check|expense|credit card/i.test(type) && !/^bill$/i.test(type) ? (/credit$/i.test(type) && /vendor/i.test(type) ? "credit" : "payment")
+      const direct = !paymentsOnly && DIRECT_PAID.test(type);
+      const kind = direct ? "bill" : paymentsOnly ? "payment" : /bill payment|payment|check|expense|credit card/i.test(type) && !/^bill$/i.test(type) ? (/credit$/i.test(type) && /vendor/i.test(type) ? "credit" : "payment")
         : /vendor credit/i.test(type) ? "credit" : /bill/i.test(type) || !type ? "bill" : "other";
       items.push({
         date, type: type || "Bill", kind, num: c.num >= 0 ? clean(r[c.num]) : "", vendor: c.vendor >= 0 ? clean(r[c.vendor]) || group : group,
-        amount: round2(Math.abs(amount)), open: c.open >= 0 && money(r[c.open]) != null ? (kind === "bill" ? Math.abs(money(r[c.open])) : money(r[c.open])) : null, memo: c.memo >= 0 ? clean(r[c.memo]) : "",
+        amount: round2(Math.abs(amount)), direct, open: direct ? 0 : c.open >= 0 && money(r[c.open]) != null ? (kind === "bill" ? Math.abs(money(r[c.open])) : money(r[c.open])) : null, memo: c.memo >= 0 ? clean(r[c.memo]) : "",
         status: c.status >= 0 ? clean(r[c.status]) : "", row: i + 1,
       });
     }
@@ -204,9 +206,13 @@
   function guessVendor(statementVendor, vendors) {
     const words = (s) => clean(s).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9 ]/g, " ").split(" ").filter((w) => w.length > 2 && !/^(and|the|llc|inc|plant|solutions|company|services)$/.test(w));
     const sw = words(statementVendor);
+    const squash = (s) => words(s).join("");
+    const sq = squash(statementVendor);
+    const prefix = (a, b) => { let n = 0; while (n < a.length && a[n] === b[n]) n++; return n; };
     let best = null, score = 0;
     vendors.forEach((v) => {
-      const s = words(v).filter((w) => sw.includes(w)).length;
+      const p = prefix(sq, squash(v));
+      const s = words(v).filter((w) => sw.includes(w)).length + (p >= 8 ? 2 + p / 100 : 0);
       if (s > score) { score = s; best = v; }
     });
     return best || (vendors.length === 1 ? vendors[0] : "");
@@ -242,9 +248,9 @@
       let via = "";
       if (!hits.length) {
         // Same amount within two weeks, with no number, or a number one digit off (a typo)
-        const cand = bills.filter((b) => !used.has(b) && round2(b.amount) === amount && (!numKey(b.num) || oneDigitOff(numKey(b.num), key) || days(b.date, s.date) <= 14));
+        const cand = bills.filter((b) => !used.has(b) && round2(b.amount) === amount && (!numKey(b.num) || (oneDigitOff(numKey(b.num), key) && days(b.date, s.date) <= 60) || days(b.date, s.date) <= 14));
         cand.sort((a, b) => (oneDigitOff(numKey(b.num), key) - oneDigitOff(numKey(a.num), key)) || (!numKey(b.num) - !numKey(a.num)) || days(a.date, s.date) - days(b.date, s.date));
-        if (cand.length && (oneDigitOff(numKey(cand[0].num), key) || !numKey(cand[0].num) || days(cand[0].date, s.date) <= 14)) {
+        if (cand.length && ((oneDigitOff(numKey(cand[0].num), key) && days(cand[0].date, s.date) <= 60) || !numKey(cand[0].num) || days(cand[0].date, s.date) <= 14)) {
           hits = [cand[0]];
           via = !numKey(cand[0].num) ? "nonum" : oneDigitOff(numKey(cand[0].num), key) ? "typo" : "amount";
         }
@@ -266,7 +272,7 @@
         const notes = [];
         if (round2(b.amount) !== amount) { row.status = "Amount differs"; row.tone = "bad"; notes.push(`QuickBooks has ${usd(b.amount)}, statement says ${usd(amount)}.`); }
         if (via === "typo") notes.push(`Entered in QuickBooks as #${b.num}.`);
-        if (via === "nonum") notes.push("Entered in QuickBooks with no bill number.");
+        if (via === "nonum") notes.push(b.direct ? `Paid in QuickBooks (${b.type}, ${mdy(b.date)}) with no bill number.` : "Entered in QuickBooks with no bill number.");
         if (via === "amount") notes.push(`Matched by amount; QuickBooks has it as #${b.num}.`);
         const o = qbOpen(b);
         if (!row.status && o != null && o < -0.005) { row.status = "Negative balance in QuickBooks"; row.tone = "bad"; notes.push(`QuickBooks shows -$${(-o).toFixed(2)} on this bill. A payment was probably applied to it twice or entered against the wrong bill.`); }
@@ -275,7 +281,7 @@
           else if (stOpen > 0.005 && o <= 0.005) { row.status = "Open per vendor, paid in QuickBooks"; row.tone = "bad"; notes.push(`The vendor says ${usd(stOpen)} is still owed. Check the payment reached them.`); }
           else if (Math.abs(stOpen - o) > 0.005) { row.status = "Open amount differs"; row.tone = "warn"; notes.push(`Vendor says ${usd(stOpen)} open, QuickBooks ${usd(o)}.`); }
         }
-        if (!row.status) { row.status = via ? "Matches (see note)" : "Matches"; row.tone = via ? "warn" : "ok"; }
+        if (!row.status) { const fine = !via || (via === "nonum" && b.direct); row.status = fine ? "Matches" : "Matches (see note)"; row.tone = fine ? "ok" : "warn"; }
         row.note = notes.join(" ");
       }
       rows.push(row);
@@ -284,7 +290,7 @@
     // QuickBooks bills in the statement's dates that aren't on the statement
     const dates = invoices.map((s) => s.date).filter(Boolean).sort();
     const from = opts.from || dates[0], to = opts.to || dates[dates.length - 1];
-    const extraBills = bills.filter((b) => !used.has(b) && b.amount > 0 && (opts.openOnly ? (b.open == null || b.open > 0.005) : true) && (!from || b.date >= from) && (!to || b.date <= addDays(to, 7)));
+    const extraBills = bills.filter((b) => !used.has(b) && !b.direct && b.amount > 0 && (opts.openOnly ? (b.open == null || b.open > 0.005) : true) && (!from || b.date >= from) && (!to || b.date <= addDays(to, 7)));
     extraBills.forEach((b) => {
       const twin = bills.find((x) => x !== b && round2(x.amount) === round2(b.amount) && numKey(x.num) && numKey(x.num) === numKey(b.num));
       rows.push({ s: null, qb: [b], amount: null, stOpen: null, tone: "bad", status: twin ? "Duplicate bill in QuickBooks" : "In QuickBooks, not on the statement",
@@ -293,9 +299,11 @@
 
     // Payments: statement payments vs QuickBooks payments, by amount and date
     const usedP = new Set();
+    // A card charge or check paid straight to the vendor can be the payment on their statement
+    const payPool = qbPays.concat(bills.filter((b) => b.direct && !used.has(b)));
     const payRows = payments.map((p) => {
       const amt = round2(Math.abs(p.amount));
-      const cand = qbPays.filter((q) => !usedP.has(q) && round2(q.amount) === amt).sort((a, b) => days(a.date, p.date) - days(b.date, p.date))[0];
+      const cand = payPool.filter((q) => !usedP.has(q) && round2(q.amount) === amt).sort((a, b) => days(a.date, p.date) - days(b.date, p.date))[0];
       if (cand && days(cand.date, p.date) <= 45) { usedP.add(cand); return { s: p, qb: cand, status: days(cand.date, p.date) > 5 ? "Matches, different date" : "Matches", tone: days(cand.date, p.date) > 5 ? "warn" : "ok" }; }
       return { s: p, qb: null, status: "Not in QuickBooks", tone: "bad" };
     });
