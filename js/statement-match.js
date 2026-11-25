@@ -61,13 +61,14 @@
       const sn = line.match(/statement\s*(?:no\.?|#|number)\s*:?\s*(\w+)/i);
       if (sn) statementNo = sn[1];
       const lower = line.toLowerCase();
+      // "DATE 10/08/2026" in the heading (can share a line with the address)
+      const sd = /^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(line) ? null : line.match(/(?:statement )?date:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+      if (sd && !statementDate) statementDate = toISO(sd[1]);
       // Header rows tell us what the columns mean
       if (!DATE_RE.test(line) || /^date\b/i.test(line)) {
         if (/received|paid/.test(lower) && /amount/.test(lower)) { second = "received"; inPayments = false; }
         else if (/balance/.test(lower) && /amount/.test(lower)) { second = "balance"; inPayments = false; }
         if (/^payment\b/.test(lower) || /payments? (date|received)/.test(lower)) { inPayments = true; second = "balance"; }
-        const sd = line.match(/(?:statement )?date:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
-        if (sd && !statementDate) statementDate = toISO(sd[1]);
         // A continuation line: more description, or the amount that wrapped
         if (/total|balance|page \d/i.test(lower)) { if (!(last && last.dangling)) last = null; }
         if (last) {
