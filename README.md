@@ -37,6 +37,10 @@ This app is separate from the Time Tracker (its own code and its own web address
 
 The **Leads** page (`leads.html`, linked from the menu for admins) keeps every new lead in one place: calls, texts and emails added with **+ Add a lead**, plus the website contact form and the New Client Intake form, which arrive on their own and match to existing leads by email or phone. Each lead moves through stages (New, Contacted, Waiting on intake form, Intake received, Site visit scheduled, Proposal sent, Won, Lost) and shows the full intake answers, notes and history. Every field has a Copy button, **Copy for QuickBooks** copies the customer details in one go, and **Export to Excel** downloads a branded spreadsheet. Slack gets a message for each new lead or intake form. **Setting it up:** [docs/LEADS.md](docs/LEADS.md).
 
+## SOPs
+
+The **SOPs** page (`sops.html`, in the menu for everyone, and in the Time Tracker menu too) is the library of standard operating procedures. SOPs are grouped by category with a search box that also finds words inside them. Each one opens as a readable page in the app, page by page, on a phone or computer, with a **Download PDF** button. Admins use **+ Add an SOP** to upload the PDF (and the Word file if they have it, which only admins can download), pick the category, and choose who can see it: everyone, or admins only. **Update** replaces the file and keeps the old one under Past versions; **Archive** hides an SOP from everyone but admins. Google Drive stays the master copy, and each SOP can link to its Drive file. **Setting it up:** run `supabase/07_sops.sql` once in Supabase > SQL Editor.
+
 ## How it's built
 
 - Plain HTML, CSS and JavaScript with no build step. GitHub Pages serves the files as they are.
@@ -58,6 +62,8 @@ The **Leads** page (`leads.html`, linked from the menu for admins) keeps every n
 | `supabase/01_reports.sql` | Report tables, security rules, photo storage and the two starting report types |
 | `supabase/functions/` | The email and AI polish helpers, and `leads-inbox` for incoming leads |
 | `leads.html`, `js/leads.js`, `css/leads.css` | The Leads page |
+| `sops.html`, `js/sops.js`, `css/sops.css` | The SOPs page. `vendor/pdfjs/` shows the PDFs on screen ([PDF.js](https://mozilla.github.io/pdf.js/)) |
+| `supabase/07_sops.sql` | SOP tables, who-can-see rules and private file storage |
 | `supabase/02_leads.sql` | Lead tables and security rules |
 | `integrations/google-form-intake.gs` | Sends each intake form answer to the Leads page |
 

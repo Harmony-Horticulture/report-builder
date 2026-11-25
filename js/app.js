@@ -166,8 +166,10 @@
     const tt = esc((window.HH_CONFIG && window.HH_CONFIG.TIME_TRACKER_URL) || "https://harmony-horticulture.github.io/time-tracker/");
     // Leads page (admins; the database only shows others the leads assigned to them)
     const leadsLink = isAdmin() ? `<a class="nav-link" href="dashboard.html">Admin dashboard</a><a class="nav-link" href="leads.html">Leads</a>` : "";
-    $("#sideNav").innerHTML += `<div class="nav-label">Apps</div>${leadsLink}<a class="nav-link" href="${tt}">Time tracker ↗</a>`;
-    $("#bottomNav").innerHTML = items.map((n) => `<button type="button" data-route="${n.route}">${n.label}</button>`).join("") + (isAdmin() ? `<a class="nav-link" href="leads.html">Leads</a>` : "") + `<a class="nav-link" href="${tt}">Time</a>`;
+    // SOP library, for every role
+    const sopsLink = `<a class="nav-link" href="sops.html${S.mode === "demo" ? "?demo" : ""}">SOPs</a>`;
+    $("#sideNav").innerHTML += `<div class="nav-label">Apps</div>${leadsLink}${sopsLink}<a class="nav-link" href="${tt}">Time tracker ↗</a>`;
+    $("#bottomNav").innerHTML = items.map((n) => `<button type="button" data-route="${n.route}">${n.label}</button>`).join("") + (isAdmin() ? `<a class="nav-link" href="leads.html">Leads</a>` : "") + sopsLink + `<a class="nav-link" href="${tt}">Time</a>`;
     $$("[data-route]").forEach((b) => (b.onclick = () => go(b.dataset.route)));
   }
   function setActive(route) {

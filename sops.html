@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#2E5240">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="HH SOPs">
+  <title>Harmony Horticulture SOPs</title>
+  <link rel="icon" type="image/png" href="assets/favicon-light.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css?v=20261125a">
+  <link rel="stylesheet" href="css/sops.css?v=20261125a">
+</head>
+<body>
+  <!-- Sign in -->
+  <div id="authView" class="auth-wrap hidden">
+    <div class="auth-card">
+      <img class="logo" src="assets/logo.png" alt="Harmony Horticulture">
+      <p class="eyebrow">SOPs</p>
+      <div id="authContent"></div>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div id="appView" class="shell hidden">
+    <aside class="sidebar">
+      <img class="logo" src="assets/logo-reversed.png" alt="Harmony Horticulture">
+      <nav id="sideNav"></nav>
+      <div class="who">
+        <div id="whoName"></div>
+        <div id="whoRole" class="small" style="opacity:0.8"></div>
+        <button id="signOutBtn" type="button">Sign out</button>
+      </div>
+    </aside>
+    <header class="topbar">
+      <img src="assets/mark-reversed.png" alt="Harmony Horticulture">
+      <button id="signOutBtnMobile" type="button">Sign out</button>
+    </header>
+    <main class="main">
+      <div class="container">
+        <div id="demoBanner" class="demo-banner hidden"></div>
+        <section id="view" class="view"></section>
+      </div>
+    </main>
+    <nav class="bottomnav" id="bottomNav"></nav>
+  </div>
+
+  <div id="loading" class="auth-wrap"><p class="muted">Loading…</p></div>
+  <div id="modalRoot"></div>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <script src="vendor/supabase.min.js?v=20261125a"></script>
+  <script src="js/config.js?v=20261125a"></script>
+  <script src="js/sops.js?v=20261125a"></script>
+</body>
+</html>
