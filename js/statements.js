@@ -37,7 +37,7 @@
     toastTimer = setTimeout(() => t.classList.add("hidden"), isError ? 7000 : 3200);
   }
 
-  const state = { stmt: null, stmtFile: "", qb: null, qbFile: "", vendor: "", editing: false, result: null };
+  const state = { stmt: null, stmtFile: "", qb: null, qbFile: "", vendor: "", editing: false, result: null, docs: null, docsAll: false, docOpen: null, user: null };
 
   // =====================================================================
   // Sign in (admins only)
@@ -89,6 +89,7 @@
     $("#sideNav").innerHTML = `<a class="nav-link" href="dashboard.html${q}">Dashboard</a>
       <a class="nav-link" href="leads.html${q}">Leads</a>
       <a class="nav-link active" href="statements.html${q}">Statement check</a>
+      <a class="nav-link" href="flowers.html${q}">Flower planner</a>
       <a class="nav-link" href="index.html${q}">Reports</a>
       <a class="nav-link" href="sops.html${q}">SOPs</a>
       <a class="nav-link" href="${tt}">Time tracker ↗</a>
@@ -97,7 +98,64 @@
     const out = async () => { if (sb) await sb.auth.signOut(); location.reload(); };
     $("#signOutBtn").onclick = out;
     $("#signOutBtnMobile").onclick = out;
+    state.user = user;
     render();
+    loadDocs();
+  }
+
+  // =====================================================================
+  // From email: statements and invoices sent to accounting@, checked
+  // every weekday morning (tools/vendor_check.js -> vendor_docs)
+  // =====================================================================
+  function demoDocs() {
+    const d = (n) => new Date(Date.now() - n * 864e5).toISOString();
+    return [
+      { id: "d1", received_at: d(0), from_email: "wserio@americantreeandplantsolutions.com", doc_type: "statement", vendor: "American Tree and Plant Solutions LLC", qb_vendor: "American Tree & Plant Solutions", doc_no: "1159", amount: 27222.5, status: "To check", issues: 3,
+        summary: "American Tree & Plant Solutions says $27,222.50 is open; QuickBooks shows $32,017.50 (-$4,795.00 apart). $600.00 looks entered twice. 3 lines to check.", email_url: "",
+        result: { problems: [{ status: "Paid per vendor, open in QuickBooks", ref: "6210", date: "2026-08-04", amount: 1250, note: "Record the bill payment in QuickBooks, or ask the vendor." }, { status: "In QuickBooks 2 times", ref: "6634", date: "2026-09-30", amount: 600, note: "Delete one of the bills." }, { status: "Missing in QuickBooks", ref: "6712", date: "2026-10-06", amount: 845, note: "" }] } },
+      { id: "d2", received_at: d(1), from_email: "support@controlledrainaz.com", doc_type: "invoice", vendor: "Controlled Rain Inc.", qb_vendor: "Controlled Rain", doc_no: "48213", amount: 412.36, status: "To check", issues: 1,
+        summary: "Invoice 48213 for $412.36 isn't in QuickBooks yet. Enter the bill.", email_url: "", result: { problems: [] } },
+      { id: "d3", received_at: d(2), from_email: "kasey@harmonyhorticulture.com", doc_type: "statement", vendor: "Wilson360", qb_vendor: "Wilson360", doc_no: "1435", amount: 1180, status: "Matches", issues: 0,
+        summary: "Wilson360 says $1,180.00 is open; QuickBooks shows $1,180.00. Everything matches.", email_url: "", result: { problems: [] } },
+    ];
+  }
+  async function loadDocs() {
+    if (DEMO) { state.docs = state.docs || demoDocs(); return renderDocs(); }
+    const r = await sb.from("vendor_docs").select("*").order("received_at", { ascending: false }).limit(100);
+    state.docs = r.error ? [] : r.data; // the table may not be set up yet
+    renderDocs();
+  }
+  const DOC_TONE = { "Matches": "ok", "Done": "muted", "To check": "bad" };
+  const NEEDS_LOOK = (x) => x.status !== "Matches" && x.status !== "Done";
+  function renderDocs() {
+    const box = $("#stEmail");
+    if (!box || !state.docs) return;
+    if (!state.docs.length) { box.innerHTML = ""; return; }
+    const open = state.docs.filter(NEEDS_LOOK);
+    const list = state.docsAll ? state.docs : open;
+    box.innerHTML = `<div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">From email</h2><button type="button" class="ghost small" id="docsAll">${state.docsAll ? "Show only ones to check" : `Show all ${state.docs.length}`}</button></div>
+      <p class="muted small">Statements and invoices that came to accounting@ (Kasey's forwards too), checked against QuickBooks every weekday morning. ${open.length ? `${open.length} to look at.` : "Nothing to look at right now."}</p>
+      ${list.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Received</th><th>Vendor</th><th>Document</th><th class="num">Amount</th><th>Result</th><th></th></tr></thead><tbody>
+      ${list.map((x) => {
+        const probs = (x.result && x.result.problems) || [];
+        const isOpen = state.docOpen === x.id;
+        return `<tr><td>${esc(nice(String(x.received_at || "").slice(0, 10)))}</td><td>${esc(x.qb_vendor || x.vendor || x.from_email)}</td><td>${x.doc_type === "invoice" ? "Invoice" : "Statement"} ${x.doc_no ? "#" + esc(x.doc_no) : ""}</td><td class="num">${money(x.amount)}</td>
+          <td>${badge(DOC_TONE[x.status] || "warn", x.status)}<div class="small muted" style="margin-top:4px">${esc(x.summary)}</div>
+          ${isOpen && probs.length ? `<ul class="small" style="margin:8px 0 0 18px;padding:0">${probs.map((q) => `<li>${q.ref ? "#" + esc(q.ref) + " " : ""}${q.date ? esc(nice(q.date)) + " " : ""}${q.amount != null ? money(q.amount) + ": " : ""}<strong>${esc(q.status)}</strong>${q.note ? ". " + esc(q.note) : ""}</li>`).join("")}</ul>` : ""}</td>
+          <td style="white-space:nowrap">${probs.length ? `<button type="button" class="ghost small" data-doc="${esc(x.id)}">${isOpen ? "Hide" : "Details"}</button>` : ""}
+            ${x.email_url ? `<a class="small" style="margin:0 6px" href="${esc(x.email_url)}" target="_blank" rel="noopener">Open email</a>` : ""}
+            ${NEEDS_LOOK(x) ? `<button type="button" class="ghost small" data-done="${esc(x.id)}">Mark done</button>` : ""}</td></tr>`;
+      }).join("")}</tbody></table></div>` : ""}
+    </div>`;
+    $("#docsAll").onclick = () => { state.docsAll = !state.docsAll; renderDocs(); };
+    $$("[data-doc]", box).forEach((b) => (b.onclick = () => { state.docOpen = state.docOpen === b.dataset.doc ? null : b.dataset.doc; renderDocs(); }));
+    $$("[data-done]", box).forEach((b) => (b.onclick = async () => {
+      const x = state.docs.find((d) => d.id === b.dataset.done);
+      const patch = { status: "Done", done_at: new Date().toISOString(), done_by_name: (state.user && state.user.full_name) || "" };
+      if (!DEMO) { const r = await sb.from("vendor_docs").update(patch).eq("id", x.id); if (r.error) return toast(r.error.message, true); }
+      Object.assign(x, patch); renderDocs(); toast("Marked done");
+    }));
   }
 
   // =====================================================================
@@ -186,6 +244,7 @@
     const s = state.stmt, q = state.qb;
     $("#view").innerHTML = `
       <div class="page-head"><div><p class="eyebrow">Admin · before you pay a vendor</p><h1>Statement check</h1></div></div>
+      <div id="stEmail"></div>
       <div class="card">
         <p class="muted small" style="margin-top:0">Add the vendor's statement and a QuickBooks report for the same vendor. The app checks every invoice against QuickBooks and lists anything that's missing, entered twice, a different amount, or paid on one side but still open on the other. Nothing is saved or changed in QuickBooks.</p>
         <div class="st-steps">
@@ -205,6 +264,7 @@
       <div id="stLines"></div>
       <div id="stResult"></div>`;
 
+    renderDocs();
     $("#stFile").onchange = async (e) => {
       const f = e.target.files[0];
       if (!f) return;

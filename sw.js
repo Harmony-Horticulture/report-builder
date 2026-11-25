@@ -4,7 +4,7 @@
 // saved copy is only used when there is no connection.
 // Supabase (logins, reports, photos) is never stored here.
 // =====================================================================
-const CACHE = "hh-reports-v33";
+const CACHE = "hh-reports-v36";
 const SHELL = [
   "./", "index.html", "css/app.css", "css/report.css",
   "js/config.js", "js/demo-clients.js", "js/store.js", "js/render.js", "js/exports.js", "js/sample-data.js", "js/geo.js", "js/app.js",
@@ -12,6 +12,7 @@ const SHELL = [
   "dashboard.html", "css/dashboard.css", "js/dashboard.js",
   "sops.html", "css/sops.css", "js/sops.js", "js/sop-doc.js",
   "statements.html", "css/statements.css", "js/statements.js", "js/statement-match.js", "js/xlsx-lite.js",
+  "flowers.html", "css/flowers.css", "js/flowers.js", "js/flower-calc.js", "js/flower-seed.js",
   "vendor/supabase.min.js", "assets/logo.png", "assets/logo-reversed.png", "assets/mark.png", "assets/mark-reversed.png",
   "assets/icon-192.png", "manifest.webmanifest",
 ];

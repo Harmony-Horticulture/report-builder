@@ -1,0 +1,10 @@
+/* Flower season planner */
+.fl-edit input, .fl-edit select { padding: 6px 8px; font-size: 0.85rem; min-width: 0; width: 100%; }
+.fl-edit td { padding: 4px 6px; vertical-align: middle; }
+.fl-edit td.num, .fl-edit th.num { text-align: right; white-space: nowrap; }
+.fl-edit input[type="number"] { min-width: 64px; }
+.fl-season tbody tr { cursor: pointer; }
+.fl-season tbody tr:hover { background: #F7F7F7; }
+.fl-order th, .fl-order td { white-space: nowrap; }
+.fl-order td.num, .fl-order th.num { text-align: right; }
+.nav-link.active { background: rgba(255,255,255,0.12); }

@@ -995,6 +995,7 @@
       <a class="nav-link nav-sub" data-page="forecast" href="dashboard.html${q}#forecast">Cash forecast</a>
       <a class="nav-link" href="leads.html${q}">Leads</a>
       <a class="nav-link" href="statements.html${q}">Statement check</a>
+      <a class="nav-link" href="flowers.html${q}">Flower planner</a>
       <a class="nav-link" href="index.html${q}">Reports</a>
       <a class="nav-link" href="sops.html${q}">SOPs</a>
       <a class="nav-link" href="${esc(TT)}">Time tracker ↗</a>
