@@ -291,7 +291,8 @@
       <div class="nav-label">Apps</div>
       <a class="nav-link" href="index.html">Reports</a>
       <a class="nav-link" href="sops.html${q}">SOPs</a>
-      <a class="nav-link" href="${tt}">Time tracker ↗</a>`;
+      <a class="nav-link" href="${tt}">Time tracker ↗</a>
+      <a class="nav-link" href="${tt}#people">People ↗</a>`;
     $("#bottomNav").innerHTML = `<a class="nav-link" href="dashboard.html${q}">Home</a><button type="button" class="active" data-home>Leads</button><button type="button" data-add>+ Add</button><a class="nav-link" href="index.html">Reports</a><a class="nav-link" href="${tt}">Time</a>`;
     $$("[data-home]").forEach((b) => (b.onclick = () => { location.hash = ""; }));
     $$("[data-add]").forEach((b) => (b.onclick = () => openAdd()));
