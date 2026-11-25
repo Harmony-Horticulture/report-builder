@@ -89,6 +89,7 @@
     $("#sideNav").innerHTML = `<a class="nav-link" href="dashboard.html${q}">Dashboard</a>
       <a class="nav-link" href="leads.html${q}">Leads</a>
       <a class="nav-link active" href="statements.html${q}">Statement check</a>
+      <a class="nav-link" href="flowers.html${q}">Flower planner</a>
       <a class="nav-link" href="index.html${q}">Reports</a>
       <a class="nav-link" href="sops.html${q}">SOPs</a>
       <a class="nav-link" href="${tt}">Time tracker ↗</a>

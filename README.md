@@ -41,6 +41,10 @@ The **Leads** page (`leads.html`, linked from the menu for admins) keeps every n
 
 The **Statement check** page (`statements.html`, admins only, in the admin menus) checks a vendor's statement against QuickBooks before you pay. Add the statement (the PDF the vendor sends, or Excel/CSV) and a QuickBooks export for that vendor (Vendor Balance Detail or the vendor's transaction list work best; Transaction List by Vendor, Unpaid Bills and A/P Aging Detail work too). It lists every invoice that's missing from QuickBooks, entered twice, a different amount, entered under a different number, or paid on one side but still open on the other; QuickBooks bills the vendor doesn't list; statement payments not in QuickBooks; and bill payments QuickBooks hasn't applied to a bill. **Check or fix the lines it read** shows what was read from the PDF so anything misread can be corrected. **Download Excel** gives a branded workbook (Summary, To check, Payments, Every invoice). Nothing is saved, and QuickBooks isn't changed. Matching logic: `js/statement-match.js`. Try it without signing in: `statements.html?demo`.
 
+## Flower planner
+
+The **Flower planner** page (`flowers.html`, admins only) replaces the estimates and tally spreadsheets for seasonal flowers. Each season has one job per client: plants (flats are worked out from plants needed, or typed), beds and pots for soil, labor and materials. It prices everything with the same rules as the old workbook (tax, the Armstrong surcharge, markup by category, Multiply or Divide) and lists the QuickBooks estimate lines to copy. The **Order list** adds up every plant and material across clients for ordering. **Rates and markups** holds tax, surcharge, markups, crew hourly costs and QuickBooks items. **Start a new season** copies a past season; Fall 2026 can be brought in from the old spreadsheets. Database: `supabase/09_flower_planner.sql`. Try it without signing in: `flowers.html?demo`.
+
 ## SOPs
 
 The **SOPs** page (`sops.html`, in the menu for everyone, and in the Time Tracker menu too) is the library of standard operating procedures, grouped by category, with a search box that also finds words inside them.

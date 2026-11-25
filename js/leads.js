@@ -289,6 +289,7 @@
       <button type="button" class="active" data-home>Leads</button>
       <button type="button" data-add>+ Add a lead</button>
       <a class="nav-link" href="statements.html${q}">Statement check</a>
+      <a class="nav-link" href="flowers.html${q}">Flower planner</a>
       <div class="nav-label">Apps</div>
       <a class="nav-link" href="index.html">Reports</a>
       <a class="nav-link" href="sops.html${q}">SOPs</a>
