@@ -1,0 +1,11 @@
+/* Statement check page */
+.st-steps { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.st-step h3 { font-size: 0.95rem; margin-bottom: 8px; }
+.st-drop { display: block; border: 2px dashed var(--line); border-radius: var(--radius); padding: 18px; text-align: center; cursor: pointer; background: #FAFAFA; font-size: 0.9rem; color: var(--gray); }
+.st-drop:hover { border-color: var(--green); }
+.st-drop input { display: block; margin: 0 auto 8px; max-width: 100%; }
+.st-drop strong { color: var(--brown); }
+.st-edit input, .st-edit select { padding: 6px 8px; font-size: 0.85rem; min-width: 0; width: 100%; }
+.st-edit td { padding: 4px 6px; }
+.nav-link.active { background: rgba(255,255,255,0.12); }
+@media (max-width: 760px) { .st-steps { grid-template-columns: 1fr; } }
