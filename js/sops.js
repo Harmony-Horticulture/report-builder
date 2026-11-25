@@ -253,12 +253,12 @@
     }
     const tt = esc(TT);
     const admin = isAdmin();
-    $("#sideNav").innerHTML = (admin ? `<a class="nav-link" href="dashboard.html${q}">Dashboard</a><a class="nav-link" href="leads.html${q}">Leads</a>` : "")
+    $("#sideNav").innerHTML = (admin ? `<a class="nav-link" href="dashboard.html${q}">Dashboard</a><a class="nav-link" href="leads.html${q}">Leads</a><a class="nav-link" href="statements.html${q}">Statement check</a>` : "")
       + `<a class="nav-link" href="index.html${q}">Reports</a>
       <button type="button" class="active" data-home>SOPs</button>
       ${admin ? `<button type="button" data-add>+ Add an SOP</button>` : ""}
       <div class="nav-label">Apps</div>
-      <a class="nav-link" href="${tt}">Time tracker ↗</a>`;
+      <a class="nav-link" href="${tt}">Time tracker ↗</a>${admin ? `<a class="nav-link" href="${tt}#people">People ↗</a>` : ""}`;
     $("#bottomNav").innerHTML = (admin ? `<a class="nav-link" href="dashboard.html${q}">Home</a>` : "")
       + `<a class="nav-link" href="index.html${q}">Reports</a><button type="button" class="active" data-home>SOPs</button><a class="nav-link" href="${tt}">Time</a>`;
     $$("[data-home]").forEach((b) => (b.onclick = () => { location.hash = ""; }));

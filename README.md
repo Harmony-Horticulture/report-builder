@@ -37,6 +37,10 @@ This app is separate from the Time Tracker (its own code and its own web address
 
 The **Leads** page (`leads.html`, linked from the menu for admins) keeps every new lead in one place: calls, texts and emails added with **+ Add a lead**, plus the website contact form and the New Client Intake form, which arrive on their own and match to existing leads by email or phone. Each lead moves through stages (New, Contacted, Waiting on intake form, Intake received, Site visit scheduled, Proposal sent, Won, Lost) and shows the full intake answers, notes and history. Every field has a Copy button, **Copy for QuickBooks** copies the customer details in one go, and **Export to Excel** downloads a branded spreadsheet. Slack gets a message for each new lead or intake form. **Setting it up:** [docs/LEADS.md](docs/LEADS.md).
 
+## Statement check
+
+The **Statement check** page (`statements.html`, admins only, in the admin menus) checks a vendor's statement against QuickBooks before you pay. Add the statement (the PDF the vendor sends, or Excel/CSV) and a QuickBooks export for that vendor (Vendor Balance Detail or the vendor's transaction list work best; Transaction List by Vendor, Unpaid Bills and A/P Aging Detail work too). It lists every invoice that's missing from QuickBooks, entered twice, a different amount, entered under a different number, or paid on one side but still open on the other; QuickBooks bills the vendor doesn't list; statement payments not in QuickBooks; and bill payments QuickBooks hasn't applied to a bill. **Check or fix the lines it read** shows what was read from the PDF so anything misread can be corrected. **Download Excel** gives a branded workbook (Summary, To check, Payments, Every invoice). Nothing is saved, and QuickBooks isn't changed. Matching logic: `js/statement-match.js`. Try it without signing in: `statements.html?demo`.
+
 ## SOPs
 
 The **SOPs** page (`sops.html`, in the menu for everyone, and in the Time Tracker menu too) is the library of standard operating procedures, grouped by category, with a search box that also finds words inside them.
