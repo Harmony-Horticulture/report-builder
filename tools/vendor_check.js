@@ -94,7 +94,7 @@ function sqlStr(v) { return v == null || v === "" ? "null" : "'" + String(v).rep
 
   // 3. Compare
   const out = {
-    doc_type: type, vendor: doc.vendor || args.vendor || "", qb_vendor: vendor, doc_no: doc.statementNo || (type === "invoice" && invoices[0] ? invoices[0].ref : ""),
+    doc_type: type, vendor: args.vendor || doc.vendor || "", // the name from the email is more reliable than a PDF heading qb_vendor: vendor, doc_no: doc.statementNo || (type === "invoice" && invoices[0] ? invoices[0].ref : ""),
     doc_date: doc.statementDate || (invoices[0] && invoices[0].date) || null, amount: null, status: "", issues: 0, summary: "", problems: [], lines: doc.lines.length,
     qb_source: [args.qb ? "transaction list" : "", args.ap ? "A/P aging" : ""].filter(Boolean).join(" + "),
   };
